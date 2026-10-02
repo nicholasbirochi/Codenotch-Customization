@@ -277,4 +277,4 @@ originated in [Im-Midi/Pac-Man](https://github.com/Im-Midi/Pac-Man) (MIT).
 
 ## License
 
-MIT — see `LICENSE`. The Codenotch design and name belong to the upstream author.
+MIT — see `license`. The Codenotch design and name belong to the upstream author.

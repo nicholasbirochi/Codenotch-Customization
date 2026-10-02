@@ -7,7 +7,7 @@
 // 150 kB of public API the real `zstd.h` would add, and keeps the vendored `.c`
 // pristine: it is never edited, so re-generating it is a straight overwrite.
 //
-// Copied verbatim from `lib/zstd.h` of the same pinned release — see README.md
+// Copied verbatim from `lib/zstd.h` of the same pinned release — see readme.md
 // for the version and how to regenerate. The declarations are ABI-frozen (zstd
 // has not changed any of these signatures since 1.0), which is the only reason
 // hand-copying them is safe; if a future bump ever did change one, that is a

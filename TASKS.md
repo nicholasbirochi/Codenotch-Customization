@@ -6,7 +6,7 @@ Design spec in [`docs/specs/2026-08-28-usage-notch-design.md`](docs/specs/2026-0
 ## M0 — Project skeleton
 - [x] `project.yml` (XcodeGen: app + unit test target, `LSUIElement`)
 - [x] `Makefile` (`gen` / `build` / `test` / `run` / `clean`)
-- [x] `.gitignore`, `README.md`, docs, design frames committed
+- [x] `.gitignore`, `readme.md`, docs, design frames committed
 - [x] `Sources/Info.plist`
 - [x] `Sources/App/CodenotchMain.swift` + `AppDelegate` — launches with no window
 - [x] `make run` starts a Dock-less agent process

@@ -54,7 +54,7 @@ targets:
           # navigator beside the code it describes, but Xcode would otherwise
           # copy any unrecognised file into the app bundle's Resources, and a
           # developer README has no business shipping to users.
-          - "Vendor/**/README.md"
+          - "Vendor/**/readme.md"
     dependencies:
       - package: Sparkle
       - package: SwiftNIO
@@ -131,7 +131,7 @@ targets:
         # is how Swift sees it. It is needed because Claude Desktop's HTTP cache
         # stores bodies with `content-encoding: zstd` and macOS ships no zstd
         # anywhere a signed, notarized app can reach — see
-        # Sources/Vendor/zstd/README.md. Delete this line and that directory
+        # Sources/Vendor/zstd/readme.md. Delete this line and that directory
         # together if the Desktop source is ever dropped.
         SWIFT_OBJC_BRIDGING_HEADER: Sources/Codenotch-Bridging-Header.h
 

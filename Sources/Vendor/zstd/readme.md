@@ -19,7 +19,7 @@ declarations in `CodenotchZstd.h`. Nothing compresses.
 | Version | v1.5.7 |
 | Release tarball | `zstd-1.5.7.tar.gz`, sha256 `eb33e51f49a15e023950cd7825ca74a4a2b43db8354825ac24fc1b7ee09e6fa3` |
 | Source archive | `v1.5.7.tar.gz`, sha256 `37d7284556b20954e56e1ca85b80226768902e2edabd3b649e9e72c0c9012ee3` (the hash Homebrew's `zstd` formula pins, checked as an independent second source; `lib/` is byte-identical between the two tarballs) |
-| Licence | BSD-3-Clause — `LICENSE` beside this file. Upstream dual-licences BSD-3-Clause **or** GPLv2; BSD-3-Clause is the option taken. |
+| Licence | BSD-3-Clause — `license` beside this file. Upstream dual-licences BSD-3-Clause **or** GPLv2; BSD-3-Clause is the option taken. |
 | Local edits | none. `zstddeclib.c` is byte-for-byte what the generator below produced. |
 
 ## Regenerating
@@ -32,7 +32,7 @@ python3 ./combine.py -r ../../lib -x legacy/zstd_legacy.h -o zstddeclib.c zstdde
 ```
 
 That is exactly what upstream's own `create_single_file_decoder.sh` runs. Copy
-the result over `zstddeclib.c`, copy the release's `LICENSE` over `LICENSE`,
+the result over `zstddeclib.c`, copy the release's `LICENSE` over `license`,
 update the table above, and re-check `CodenotchZstd.h` against the release's
 `lib/zstd.h`.
 

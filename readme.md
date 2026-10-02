@@ -15,13 +15,15 @@ still working, done, or waiting on you.**
 
 </div>
 
+This is a fork of [vinzdg/codenotch](https://github.com/vinzdg/codenotch). The setup and feature reference below come from the upstream project; the original author and MIT license are retained. Use the [upstream releases](https://github.com/vinzdg/codenotch/releases) for its published installers.
+
 Hover a ring for its limit windows and when they reset. Claude's ring shows the
 same **current session** window Claude Code's own `/usage` leads with, so the
 two never disagree.
 
 ## Download
 
-[![Download for macOS](docs/design/download-macos.svg)](../../releases/latest/download/Codenotch.dmg)
+[![Download for macOS](docs/design/download-macos.svg)](https://github.com/vinzdg/codenotch/releases/latest/download/Codenotch.dmg)
 
 That button is the disk image itself, not the page it sits on — the asset is
 named `Codenotch.dmg` in every release, so `releases/latest/download/` always
@@ -50,7 +52,7 @@ instead, see [Building](#building).
 
 [![Download for Windows](docs/design/download-windows.svg)](../../releases/latest/download/Codenotch-Setup.exe)
 
-A Windows port — Rust/Tauri 2, same design and providers — lives in [`windows/`](windows/README.md).
+A Windows port — Rust/Tauri 2, same design and providers — lives in [`windows/`](windows/readme.md).
 The button is the installer itself, named `Codenotch-Setup.exe` in every release for the same
 reason the dmg keeps one name. It installs for the current user without administrator rights,
 and fetches WebView2 if Windows does not already have it.
@@ -440,4 +442,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-[MIT](LICENSE) © 2026 Vinz
+[MIT](license) © 2026 Vinz

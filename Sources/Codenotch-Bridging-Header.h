@@ -3,5 +3,5 @@
 // One entry, and it is expected to stay that way: the only C in this project is
 // the vendored Zstandard decoder, needed because Claude Desktop's HTTP cache
 // stores bodies as zstd and macOS ships no decoder for it. See
-// Sources/Vendor/zstd/README.md.
+// Sources/Vendor/zstd/readme.md.
 #import "Vendor/zstd/CodenotchZstd.h"
