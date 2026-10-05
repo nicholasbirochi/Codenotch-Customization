@@ -29,6 +29,16 @@ final class NVIDIANIMTokenUsageTests: XCTestCase {
     }
 }
 
+final class NVIDIANIMCredentialsTests: XCTestCase {
+    func testAccountLinksToNvidiaAPIKeys() throws {
+        let account = try XCTUnwrap(NVIDIANIMCredentials.account(environment: [
+            NVIDIANIMCredentials.environmentKey: "nvapi-test"
+        ]))
+
+        XCTAssertEqual(account.manageURL?.absoluteString, "https://build.nvidia.com/settings/api-keys")
+    }
+}
+
 final class OpenCodeNVIDIAUsageTests: XCTestCase {
     private let now = nvidiaDate(2026, 9, 15)
     private var databases: [URL] = []
