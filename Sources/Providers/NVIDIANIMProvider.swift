@@ -6,7 +6,7 @@ actor NVIDIANIMProvider: UsageProvider {
 
     nonisolated let id = NVIDIANIMProvider.providerID
     nonisolated let displayName = NVIDIANIMProvider.providerName
-    nonisolated let glyph = ProviderGlyph.third
+    nonisolated let glyph = ProviderGlyph.nvidia
 
     private let session: URLSession
     private let database: URL
@@ -98,7 +98,7 @@ actor NVIDIANIMProvider: UsageProvider {
         return ProviderSnapshot(
             id: providerID,
             displayName: providerName,
-            glyph: .third,
+            glyph: .nvidia,
             fidelity: usage == nil && !rateLimitWindows.isEmpty ? .official : .derived,
             status: .ok,
             windows: windows,
