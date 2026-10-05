@@ -99,10 +99,12 @@ actor NVIDIANIMProvider: UsageProvider {
             id: providerID,
             displayName: providerName,
             glyph: .nvidia,
-            fidelity: usage == nil && !rateLimitWindows.isEmpty ? .official : .derived,
+            fidelity: rateLimitWindows.isEmpty ? .derived : .official,
             status: .ok,
             windows: windows,
-            headlineID: usage == nil ? rateLimitWindows.first?.id : "opencode-month"
+            headlineID: rateLimitWindows.first { $0.id == "tokens" }?.id
+                ?? rateLimitWindows.first?.id
+                ?? (usage == nil ? nil : "opencode-month")
         )
     }
 
@@ -145,19 +147,19 @@ enum NVIDIANIMRateLimits {
     static func windows(from response: HTTPURLResponse, now: Date = Date()) -> [LimitWindow] {
         [
             window(
-                id: "requests",
-                label: "NVIDIA API requests",
-                limit: response.value(forHTTPHeaderField: "x-ratelimit-limit-requests"),
-                remaining: response.value(forHTTPHeaderField: "x-ratelimit-remaining-requests"),
-                reset: response.value(forHTTPHeaderField: "x-ratelimit-reset-requests"),
-                now: now
-            ),
-            window(
                 id: "tokens",
                 label: "NVIDIA API tokens",
                 limit: response.value(forHTTPHeaderField: "x-ratelimit-limit-tokens"),
                 remaining: response.value(forHTTPHeaderField: "x-ratelimit-remaining-tokens"),
                 reset: response.value(forHTTPHeaderField: "x-ratelimit-reset-tokens"),
+                now: now
+            ),
+            window(
+                id: "requests",
+                label: "NVIDIA API requests",
+                limit: response.value(forHTTPHeaderField: "x-ratelimit-limit-requests"),
+                remaining: response.value(forHTTPHeaderField: "x-ratelimit-remaining-requests"),
+                reset: response.value(forHTTPHeaderField: "x-ratelimit-reset-requests"),
                 now: now
             )
         ].compactMap { $0 }
@@ -193,6 +195,7 @@ enum NVIDIANIMRateLimits {
             usedFraction: Double(used) / Double(limit),
             remaining: max(0, remaining),
             used: used,
+            detail: "\(LimitWindow.compact(used)) used · \(LimitWindow.compact(max(0, remaining))) left",
             resetsAt: resetDate(reset, now: now)
         )
     }
