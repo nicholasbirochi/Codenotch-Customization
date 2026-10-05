@@ -131,6 +131,14 @@ final class OpenCodeNVIDIAUsageTests: XCTestCase {
 }
 
 final class NVIDIANIMProviderSnapshotTests: XCTestCase {
+    func testTheProviderUsesTheNvidiaGlyphAsset() throws {
+        XCTAssertEqual(ProviderGlyph.nvidia.rawValue, "nvidia")
+        XCTAssertEqual(ProviderGlyph.nvidia.assetName, "glyph-nvidia")
+        XCTAssertEqual(ProviderGlyph.nvidia.outline, [])
+        XCTAssertNotNil(NSImage(named: ProviderGlyph.nvidia.assetName))
+        XCTAssertEqual(NVIDIANIMProvider.snapshot(usage: nil, rateLimitWindows: []).glyph, .nvidia)
+    }
+
     func testDerivedUsageStaysDerivedEvenWithOfficialHeadersPresent() {
         let usage = NVIDIANIMTokenUsage(tokensThisMonth: 1200, tokensToday: 300, callsThisMonth: 2)
         let official = LimitWindow(id: "requests", label: "NVIDIA API requests",

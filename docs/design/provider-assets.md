@@ -108,6 +108,13 @@ colour. Image set marked as a template with vector data preserved;
 `ApifyProviderTests.testTheGlyphAssetRendersAsAMarkNotASquare` checks the
 native render.
 
+## NVIDIA
+
+`Sources/Assets.xcassets/glyph-nvidia.imageset/nvidia.svg` is
+`simple-icons:nvidia`, the 24 px Simple Icons mark surfaced by Iconify as
+CC0 1.0. It is used as a template vector asset, so `ProviderGlyphView` tints it
+like the other provider marks.
+
 ## llama.cpp
 
 `glyph-llamacpp` uses the official `icon/icon-dark.svg` from
