@@ -44,10 +44,13 @@ enum OpenCodeSchema {
     /// The provider id, which moved into the model object in 2.x. Matched in
     /// both places rather than branching, since one predicate covers the pair
     /// and a 1.x row has no `model` key to miss on.
-    static let providerPredicate = """
-    COALESCE(json_extract(data, '$.model.providerID'),
-              json_extract(data, '$.providerID')) = 'google'
-    """
+    static func providerPredicate(_ providerID: String) -> String {
+        let providerID = providerID.replacingOccurrences(of: "'", with: "''")
+        return """
+        COALESCE(json_extract(data, '$.model.providerID'),
+                  json_extract(data, '$.providerID')) = '\(providerID)'
+        """
+    }
 
     /// The role, which is a column in 2.x and a JSON key in 1.x. This one has to
     /// branch: `type` does not exist as a column in 1.x, so naming it there
@@ -66,7 +69,7 @@ enum OpenCodeSchema {
     /// message OpenCode summarised keeps the figure and loses the breakdown —
     /// so dropping the column would turn those rows into a zero, which is
     /// worse than the rename this reader was fixed for.
-    func geminiUsageSQL(startOfMonth: Int) -> String {
+    func usageSQL(startOfMonth: Int, providerID: String) -> String {
         let table = self == .v2 ? "session_message" : "message"
         return """
         SELECT time_created,
@@ -75,12 +78,18 @@ enum OpenCodeSchema {
                json_extract(data, '$.tokens.output'),
                json_extract(data, '$.tokens.reasoning'),
                json_extract(data, '$.tokens.cache.read'),
-               json_extract(data, '$.tokens.cache.write')
+               json_extract(data, '$.tokens.cache.write'),
+               COALESCE(json_extract(data, '$.model.id'),
+                        json_extract(data, '$.modelID'))
         FROM \(table)
         WHERE \(OpenCodeSchema.assistantPredicate(for: self))
-          AND \(OpenCodeSchema.providerPredicate)
+          AND \(OpenCodeSchema.providerPredicate(providerID))
           AND time_created >= \(startOfMonth)
         """
+    }
+
+    func geminiUsageSQL(startOfMonth: Int) -> String {
+        usageSQL(startOfMonth: startOfMonth, providerID: "google")
     }
 
     func activitySQL(cutoffMillis: Int) -> String {
