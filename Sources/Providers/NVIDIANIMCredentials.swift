@@ -20,7 +20,7 @@ enum NVIDIANIMCredentials {
             label: nil,
             plan: nil,
             source: environmentKey,
-            manageURL: URL(string: "https://build.nvidia.com/explore/discover")
+            manageURL: URL(string: "https://build.nvidia.com/settings/api-keys")
         )
     }
 
