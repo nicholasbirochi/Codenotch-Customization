@@ -149,20 +149,23 @@ final class NVIDIANIMProviderSnapshotTests: XCTestCase {
         XCTAssertEqual(NVIDIANIMProvider.snapshot(usage: nil, rateLimitWindows: []).glyph, .nvidia)
     }
 
-    func testDerivedUsageStaysDerivedEvenWithOfficialHeadersPresent() {
+    func testOfficialTokenLimitBecomesHeadlineWhenOpenCodeUsageExists() {
         let usage = NVIDIANIMTokenUsage(tokensThisMonth: 1200, tokensToday: 300, callsThisMonth: 2)
-        let official = LimitWindow(id: "requests", label: "NVIDIA API requests",
+        let requests = LimitWindow(id: "requests", label: "NVIDIA API requests",
                                    usedFraction: 0.25, remaining: 75, used: 25)
+        let tokens = LimitWindow(id: "tokens", label: "NVIDIA API tokens",
+                                 usedFraction: 0.40, remaining: 6000, used: 4000)
 
         let snapshot = NVIDIANIMProvider.snapshot(
             usage: usage,
-            rateLimitWindows: [official],
+            rateLimitWindows: [requests, tokens],
             now: nvidiaDate(2026, 9, 15)
         )
 
-        XCTAssertEqual(snapshot.fidelity, .derived)
-        XCTAssertEqual(snapshot.headlineID, "opencode-month")
-        XCTAssertEqual(snapshot.headline?.used, 1200)
+        XCTAssertEqual(snapshot.fidelity, .official)
+        XCTAssertEqual(snapshot.headlineID, "tokens")
+        XCTAssertEqual(snapshot.headline?.remaining, 6000)
+        XCTAssertTrue(snapshot.windows.contains { $0.id == "opencode-month" && $0.used == 1200 })
     }
 
     func testRateLimitHeadersBecomeOfficialWindows() throws {
@@ -183,5 +186,29 @@ final class NVIDIANIMProviderSnapshotTests: XCTestCase {
         XCTAssertEqual(windows[0].used, 25)
         XCTAssertEqual(windows[0].remaining, 75)
         XCTAssertEqual(windows[0].usedFraction, 0.25)
+        XCTAssertEqual(windows[0].detail, "25 used · 75 left")
+    }
+
+    func testTokenRateLimitHeadersComeBeforeRequestHeaders() throws {
+        let response = try XCTUnwrap(HTTPURLResponse(
+            url: NVIDIANIMRateLimits.modelsEndpoint,
+            statusCode: 200,
+            httpVersion: nil,
+            headerFields: [
+                "x-ratelimit-limit-tokens": "100000",
+                "x-ratelimit-remaining-tokens": "75000",
+                "x-ratelimit-reset-tokens": "3600",
+                "x-ratelimit-limit-requests": "100",
+                "x-ratelimit-remaining-requests": "80",
+                "x-ratelimit-reset-requests": "60"
+            ]
+        ))
+
+        let windows = NVIDIANIMRateLimits.windows(from: response, now: nvidiaDate(2026, 9, 15))
+        XCTAssertEqual(windows.map(\.id), ["tokens", "requests"])
+        XCTAssertEqual(windows[0].usedFraction, 0.25)
+        XCTAssertEqual(windows[0].used, 25000)
+        XCTAssertEqual(windows[0].remaining, 75000)
+        XCTAssertEqual(windows[0].detail, "25k used · 75k left")
     }
 }
