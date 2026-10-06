@@ -43,4 +43,9 @@ final class UpdaterOutcomeTests: XCTestCase {
         XCTAssertEqual(Updater.nextVersion(after: "1.18.3"), "1.19.0")
         XCTAssertEqual(Updater.nextVersion(after: "2"), "2.1.0")
     }
+
+    func testOnlyTheOfficialBundleUsesTheOfficialUpdater() {
+        XCTAssertTrue(Updater.supportsAutomaticUpdates(bundleIdentifier: "com.vinz.codenotch"))
+        XCTAssertFalse(Updater.supportsAutomaticUpdates(bundleIdentifier: "com.nicholasbirochi.codenotch.nvidia"))
+    }
 }

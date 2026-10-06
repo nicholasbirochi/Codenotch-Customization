@@ -324,7 +324,7 @@ build-ci: gen
 		'<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' \
 		'<plist version="1.0"><dict>' \
 		'<key>com.apple.security.cs.disable-library-validation</key><true/>' \
-		'</dict></plist>' > $(CI_ENTITLEMENTS)
+		'</dict></plist>' > "$(CI_ENTITLEMENTS)"
 	xcodebuild -project $(PROJECT) -scheme $(SCHEME) -destination '$(DEST)' \
 		-configuration Release -derivedDataPath $(CI_DERIVED) \
 		CODE_SIGN_IDENTITY="-" CODE_SIGN_STYLE=Automatic DEVELOPMENT_TEAM="" \
@@ -341,11 +341,12 @@ build-ci: gen
 	@#
 	@# The outer bundle only: the framework beside it keeps the signature it
 	@# was built with, and re-sealing the app recomputes its hashes anyway.
-	codesign --force --options runtime --entitlements $(CI_ENTITLEMENTS) \
-		--sign - $(CI_APP)
+	xattr -cr "$(CI_APP)"
+	codesign --force --options runtime --entitlements "$(CI_ENTITLEMENTS)" \
+		--sign - "$(CI_APP)"
 	@# Proof rather than assumption, because this is invisible until someone
 	@# thinks to look: fail the build if the entitlement came back.
-	@codesign -d --entitlements - --xml $(CI_APP) 2>/dev/null \
+	@codesign -d --entitlements - --xml "$(CI_APP)" 2>/dev/null \
 		| grep -q 'get-task-allow' \
 		&& { echo "get-task-allow survived the re-sign"; exit 1; } || true
 
