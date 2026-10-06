@@ -25,7 +25,7 @@ actor NVIDIANIMProvider: UsageProvider {
     }
 
     nonisolated var signInRoute: SignInRoute {
-        .guidance(L10n.t("Export NVIDIA_API_KEY before launching Codenotch. The NVIDIA NIM row also counts calls OpenCode recorded locally."))
+        .guidance(L10n.t("Set NVIDIA_API_KEY in your environment or shell profile. The NVIDIA NIM row also counts calls OpenCode recorded locally."))
     }
 
     nonisolated func account() -> ProviderAccount? { NVIDIANIMCredentials.account() }

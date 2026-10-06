@@ -37,6 +37,38 @@ final class NVIDIANIMCredentialsTests: XCTestCase {
 
         XCTAssertEqual(account.manageURL?.absoluteString, "https://build.nvidia.com/settings/api-keys")
     }
+
+    func testItReadsTheAPIKeyFromZshrcForFinderLaunches() throws {
+        let home = FileManager.default.temporaryDirectory
+            .appendingPathComponent("nvidia-home-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        try #"export NVIDIA_API_KEY="nvapi-from-zshrc""#
+            .write(to: home.appendingPathComponent(".zshrc"), atomically: true, encoding: .utf8)
+
+        let credential = try XCTUnwrap(NVIDIANIMCredentials.load(environment: [:], home: home))
+        XCTAssertEqual(credential.token, "nvapi-from-zshrc")
+        XCTAssertEqual(credential.source, "~/.zshrc")
+        XCTAssertEqual(NVIDIANIMCredentials.account(environment: [:], home: home)?.source, "~/.zshrc")
+    }
+
+    func testEnvironmentWinsOverShellFiles() throws {
+        let home = FileManager.default.temporaryDirectory
+            .appendingPathComponent("nvidia-home-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        try #"export NVIDIA_API_KEY="nvapi-from-zshrc""#
+            .write(to: home.appendingPathComponent(".zshrc"), atomically: true, encoding: .utf8)
+
+        let credential = try XCTUnwrap(NVIDIANIMCredentials.load(
+            environment: [NVIDIANIMCredentials.environmentKey: "nvapi-from-env"],
+            home: home
+        ))
+        XCTAssertEqual(credential.token, "nvapi-from-env")
+        XCTAssertEqual(credential.source, NVIDIANIMCredentials.environmentKey)
+    }
 }
 
 final class OpenCodeNVIDIAUsageTests: XCTestCase {
