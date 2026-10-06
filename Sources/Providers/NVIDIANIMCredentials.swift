@@ -2,6 +2,7 @@ import Foundation
 
 enum NVIDIANIMCredentials {
     static let environmentKey = "NVIDIA_API_KEY"
+    static let monthlyBudgetKey = "NVIDIA_NIM_MONTHLY_TOKEN_BUDGET"
 
     struct Credential: Equatable {
         let token: String
@@ -18,9 +19,25 @@ enum NVIDIANIMCredentials {
         for file in [".zshrc", ".zprofile", ".profile"] {
             let url = home.appendingPathComponent(file)
             guard let text = try? String(contentsOf: url, encoding: .utf8),
-                  let token = shellValue(in: text)
+                  let token = shellValue(named: environmentKey, in: text)
             else { continue }
             return Credential(token: token, source: "~/\(file)")
+        }
+        return nil
+    }
+
+    static func monthlyTokenBudget(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        home: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) -> Int? {
+        if let budget = budget(environment[monthlyBudgetKey]) { return budget }
+        for file in [".zshrc", ".zprofile", ".profile"] {
+            let url = home.appendingPathComponent(file)
+            guard let text = try? String(contentsOf: url, encoding: .utf8),
+                  let value = shellValue(named: monthlyBudgetKey, in: text),
+                  let budget = budget(value)
+            else { continue }
+            return budget
         }
         return nil
     }
@@ -45,15 +62,21 @@ enum NVIDIANIMCredentials {
         return text
     }
 
-    private static func shellValue(in text: String) -> String? {
+    private static func budget(_ value: String?) -> Int? {
+        nonEmpty(value).flatMap { Int($0.replacingOccurrences(of: "_", with: "")) }.flatMap {
+            $0 > 0 ? $0 : nil
+        }
+    }
+
+    private static func shellValue(named name: String, in text: String) -> String? {
         for line in text.components(separatedBy: .newlines) {
             var text = line.trimmingCharacters(in: .whitespaces)
             if text.hasPrefix("export ") {
                 text.removeFirst("export ".count)
                 text = text.trimmingCharacters(in: .whitespaces)
             }
-            guard text.hasPrefix("\(environmentKey)=") else { continue }
-            let value = String(text.dropFirst(environmentKey.count + 1))
+            guard text.hasPrefix("\(name)=") else { continue }
+            let value = String(text.dropFirst(name.count + 1))
                 .trimmingCharacters(in: .whitespaces)
             if let token = unquoted(value).flatMap(nonEmpty) { return token }
         }

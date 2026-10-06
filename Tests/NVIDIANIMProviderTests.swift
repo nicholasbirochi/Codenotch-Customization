@@ -69,6 +69,18 @@ final class NVIDIANIMCredentialsTests: XCTestCase {
         XCTAssertEqual(credential.token, "nvapi-from-env")
         XCTAssertEqual(credential.source, NVIDIANIMCredentials.environmentKey)
     }
+
+    func testItReadsTheManualMonthlyBudgetFromZshrc() throws {
+        let home = FileManager.default.temporaryDirectory
+            .appendingPathComponent("nvidia-home-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        try #"export NVIDIA_NIM_MONTHLY_TOKEN_BUDGET="1_000_000""#
+            .write(to: home.appendingPathComponent(".zshrc"), atomically: true, encoding: .utf8)
+
+        XCTAssertEqual(NVIDIANIMCredentials.monthlyTokenBudget(environment: [:], home: home), 1_000_000)
+    }
 }
 
 final class OpenCodeNVIDIAUsageTests: XCTestCase {
@@ -198,6 +210,23 @@ final class NVIDIANIMProviderSnapshotTests: XCTestCase {
         XCTAssertEqual(snapshot.headlineID, "tokens")
         XCTAssertEqual(snapshot.headline?.remaining, 6000)
         XCTAssertTrue(snapshot.windows.contains { $0.id == "opencode-month" && $0.used == 1200 })
+    }
+
+    func testManualBudgetDrawsTheOpenCodeMonthLineWhenNoOfficialLimitExists() {
+        let usage = NVIDIANIMTokenUsage(tokensThisMonth: 250_000, tokensToday: 300, callsThisMonth: 2)
+
+        let snapshot = NVIDIANIMProvider.snapshot(
+            usage: usage,
+            rateLimitWindows: [],
+            monthlyBudget: 1_000_000,
+            now: nvidiaDate(2026, 9, 15)
+        )
+
+        let month = snapshot.windows.first { $0.id == "opencode-month" }
+        XCTAssertEqual(snapshot.fidelity, .manual)
+        XCTAssertEqual(snapshot.headlineID, "opencode-month")
+        XCTAssertEqual(month?.label, "OpenCode tokens this month · budget 1.0M")
+        XCTAssertEqual(month?.usedFraction, 0.25)
     }
 
     func testRateLimitHeadersBecomeOfficialWindows() throws {
