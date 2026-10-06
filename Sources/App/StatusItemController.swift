@@ -374,7 +374,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         ).target = self
         menu.addItem(.separator())
         menu.addItem(
-            withTitle: L10n.t("Quit Codenotch"), action: #selector(quit), keyEquivalent: "q"
+            withTitle: L10n.t("Quit Codenotch").replacingOccurrences(of: "Codenotch", with: "Codenotch Dev"),
+            action: #selector(quit), keyEquivalent: "q"
         ).target = self
     }
 
