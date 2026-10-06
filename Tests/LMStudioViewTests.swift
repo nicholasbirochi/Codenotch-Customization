@@ -18,6 +18,11 @@ final class LMStudioViewTests: XCTestCase {
                                 status: .ok, windows: [], kind: .localRuntime, localRuntime: try OllamaLocalUsage.parse(data))
     }
 
+    private func neighbor() -> ProviderSnapshot {
+        ProviderSnapshot(id: "lmstudio-neighbor", displayName: "Neighbor", glyph: .third,
+                         fidelity: .manual, status: .ok, windows: [])
+    }
+
     func testLMStudioShowsSpeedWithoutTheOllamaCaptureSwitch() throws {
         let vm = NotchViewModel()
         vm.updateSnapshots([try ollama(["qwen3:latest"]), try runtime()])
@@ -102,7 +107,7 @@ final class LMStudioViewTests: XCTestCase {
     func testLedgerRowsGrowTheCardAndStillFitEveryEdge() throws {
         let vm = NotchViewModel()
         vm.now = LMStudioLogFixtures.date(2026, 9, 10, 12, 0, 0)
-        vm.updateSnapshots([Fixtures.snapshots()[0], try runtime()])
+        vm.updateSnapshots([neighbor(), try runtime()])
         var ledger = LocalTokenLedger()
         ledger.record(LocalPrediction(instance: "qwen3.8-27b", at: vm.now.addingTimeInterval(-5), inputTokens: 20_000,
                                       outputTokens: 1_200, reasoningTokens: 600, tokensPerSecond: 24.1,
