@@ -11,21 +11,26 @@ actor NVIDIANIMProvider: UsageProvider {
     private let session: URLSession
     private let database: URL
     private let credential: @Sendable () -> NVIDIANIMCredentials.Credential?
+    private let monthlyBudget: @Sendable () -> Int?
 
     init(
         session: URLSession = .shared,
         database: URL = OpenCodeNVIDIAUsage.database,
         credential: @escaping @Sendable () -> NVIDIANIMCredentials.Credential? = {
             NVIDIANIMCredentials.load()
+        },
+        monthlyBudget: @escaping @Sendable () -> Int? = {
+            NVIDIANIMCredentials.monthlyTokenBudget()
         }
     ) {
         self.session = session
         self.database = database
         self.credential = credential
+        self.monthlyBudget = monthlyBudget
     }
 
     nonisolated var signInRoute: SignInRoute {
-        .guidance(L10n.t("Set NVIDIA_API_KEY in your environment or shell profile. The NVIDIA NIM row also counts calls OpenCode recorded locally."))
+        .guidance(L10n.t("Set NVIDIA_API_KEY in your environment or shell profile. Optional: set NVIDIA_NIM_MONTHLY_TOKEN_BUDGET to draw a manual OpenCode budget line."))
     }
 
     nonisolated func account() -> ProviderAccount? { NVIDIANIMCredentials.account() }
@@ -34,7 +39,7 @@ actor NVIDIANIMProvider: UsageProvider {
         let usage = OpenCodeNVIDIAUsage.read(database: database)
         guard let credential = credential() else {
             guard let usage else { throw UsageProviderError.needsAuth }
-            return Self.snapshot(usage: usage, rateLimitWindows: [], now: Date())
+            return Self.snapshot(usage: usage, rateLimitWindows: [], monthlyBudget: monthlyBudget(), now: Date())
         }
 
         do {
@@ -44,10 +49,15 @@ actor NVIDIANIMProvider: UsageProvider {
                     L10n.t("NVIDIA NIM accepted the key, but did not publish quota headers and OpenCode has no recorded NVIDIA calls yet.")
                 )
             }
-            return Self.snapshot(usage: usage, rateLimitWindows: rateLimits, now: Date())
+            return Self.snapshot(
+                usage: usage,
+                rateLimitWindows: rateLimits,
+                monthlyBudget: monthlyBudget(),
+                now: Date()
+            )
         } catch {
             if let usage {
-                return Self.snapshot(usage: usage, rateLimitWindows: [], now: Date())
+                return Self.snapshot(usage: usage, rateLimitWindows: [], monthlyBudget: monthlyBudget(), now: Date())
             }
             throw error
         }
@@ -56,16 +66,21 @@ actor NVIDIANIMProvider: UsageProvider {
     static func snapshot(
         usage: NVIDIANIMTokenUsage?,
         rateLimitWindows: [LimitWindow],
+        monthlyBudget: Int? = nil,
         now: Date = Date()
     ) -> ProviderSnapshot {
         let calendar = NVIDIANIMTokenUsage.calendar
+        let validatedBudget = monthlyBudget.flatMap { $0 > 0 ? $0 : nil }
         var windows = rateLimitWindows
         if let usage {
             let month = calendar.dateInterval(of: .month, for: now)
+            let budget = rateLimitWindows.isEmpty ? validatedBudget : nil
             windows += [
                 LimitWindow(
                     id: "opencode-month",
-                    label: "OpenCode tokens this month",
+                    label: budget.map { "OpenCode tokens this month · budget \(LimitWindow.compact($0))" }
+                        ?? "OpenCode tokens this month",
+                    usedFraction: budget.map { Double(usage.tokensThisMonth) / Double($0) },
                     used: usage.tokensThisMonth,
                     resetsAt: month?.end,
                     duration: month?.duration
@@ -99,7 +114,7 @@ actor NVIDIANIMProvider: UsageProvider {
             id: providerID,
             displayName: providerName,
             glyph: .nvidia,
-            fidelity: rateLimitWindows.isEmpty ? .derived : .official,
+            fidelity: rateLimitWindows.isEmpty ? (validatedBudget == nil ? .derived : .manual) : .official,
             status: .ok,
             windows: windows,
             headlineID: rateLimitWindows.first { $0.id == "tokens" }?.id
