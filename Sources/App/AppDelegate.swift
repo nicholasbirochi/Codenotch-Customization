@@ -94,12 +94,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var miniMaxWeb: WebSessionProvider?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Set here, not in the Info.plist: this call is applied at launch and
-        // overrides `LSUIElement` either way. Removing the plist key alone left
-        // the app registered as a UIElement with no Dock tile, which looked
-        // exactly like the icon having failed to install. The user's choice
-        // replaces this a moment later, once preferences exist.
-        NSApp.setActivationPolicy(.regular)
+        // Start as a menu-bar app; the saved presence preference may promote
+        // it to Dock a moment later.
+        NSApp.setActivationPolicy(.accessory)
         guard !isRunningTests else { return }
         Self.retireOlderInstances()
         ChannelNotifications.installPresenter()
