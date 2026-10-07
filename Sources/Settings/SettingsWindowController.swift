@@ -71,20 +71,9 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         self.signIn = signIn
     }
 
-    /// Bring the window to the front from an accessory app.
-    ///
-    /// `makeKeyAndOrderFront` plus `activate` alone were not enough here: an
-    /// accessory app — anything but `AppPresence.dock` — is restricted by
-    /// macOS from properly activating and compositing its own windows, so the
-    /// window could be created, "visible" by `NSWindow`'s own bookkeeping, and
-    /// still never actually drawn on screen (its `occlusionState` missing
-    /// `.visible` is what gave this away). A `.regular` app has no such
-    /// restriction, so this promotes to one for as long as the window is
-    /// open and restores whatever `AppPresence` actually chose once it
-    /// closes — settings staying open is the one moment the Dock is allowed
-    /// to gain an icon it did not ask for.
+    /// Bring the window to the front without turning the menu-bar app into a
+    /// Dock app.
     private func surface(_ window: NSWindow) {
-        NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
         window.orderFrontRegardless()
