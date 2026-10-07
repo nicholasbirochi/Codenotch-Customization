@@ -1323,11 +1323,11 @@ final class AppPresenceTests: XCTestCase {
     }
 
     @MainActor
-    func testItDefaultsToTheDockRatherThanNowhere() {
+    func testItDefaultsToTheMenuBarRatherThanNowhere() {
         let name = "AppPresenceTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: name)!
         defaults.removePersistentDomain(forName: name)
-        XCTAssertEqual(Preferences(defaults: defaults).appPresence, .dock)
+        XCTAssertEqual(Preferences(defaults: defaults).appPresence, .menuBar)
     }
 
     /// A value written by a future version must not make the app vanish.
@@ -1337,7 +1337,7 @@ final class AppPresenceTests: XCTestCase {
         let defaults = UserDefaults(suiteName: name)!
         defaults.removePersistentDomain(forName: name)
         defaults.set("skywriting", forKey: "appPresence")
-        XCTAssertEqual(Preferences(defaults: defaults).appPresence, .dock)
+        XCTAssertEqual(Preferences(defaults: defaults).appPresence, .menuBar)
     }
 
     @MainActor

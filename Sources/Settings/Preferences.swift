@@ -818,11 +818,10 @@ final class Preferences: ObservableObject {
         // Absent means the fold that has shipped since full-screen detection
         // exists — the setting silences it, it does not introduce it.
         self.foldsForFullScreen = defaults.object(forKey: Keys.foldsForFullScreen) as? Bool ?? true
-        // Absent means never chosen. The Dock is the default because it is the
-        // findable one — a new user who cannot see the app anywhere has no way
-        // to learn it is running.
+        // Absent means never chosen. This build lives in the menu bar by
+        // default, without a Dock tile.
         self.appPresence = defaults.string(forKey: Keys.presence)
-            .flatMap(AppPresence.init(rawValue:)) ?? .dock
+            .flatMap(AppPresence.init(rawValue:)) ?? .menuBar
         // The notch, because that is what every earlier version did; a banner
         // is the choice of someone who found the notch too quiet.
         self.notificationChannel = defaults.string(forKey: Keys.notificationChannel)
