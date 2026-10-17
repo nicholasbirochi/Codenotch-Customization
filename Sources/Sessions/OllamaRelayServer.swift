@@ -16,13 +16,16 @@ final class OllamaRelayServer: @unchecked Sendable {
     private let upstream: URL
     private let observe: Observer
     private let onPerformance: (String, LocalModelPerformance) -> Void
+    private let onPrediction: (LocalPrediction) -> Void
     private var stopped = false
 
     init(upstream: URL,
          onPerformance: @escaping (String, LocalModelPerformance) -> Void = { _, _ in },
+         onPrediction: @escaping (LocalPrediction) -> Void = { _ in },
          observe: @escaping Observer) {
         self.upstream = upstream
         self.onPerformance = onPerformance
+        self.onPrediction = onPrediction
         self.observe = observe
     }
 
@@ -40,7 +43,7 @@ final class OllamaRelayServer: @unchecked Sendable {
                                                                      withErrorHandling: true)
                     .flatMap {
                         channel.pipeline.addHandler(RelayRequestHandler(upstream: endpoint,
-                            observe: self.observe, onPerformance: self.onPerformance))
+                            observe: self.observe, onPerformance: self.onPerformance, onPrediction: self.onPrediction))
                     }
             }
             .bind(host: "127.0.0.1", port: port).get()
@@ -93,6 +96,7 @@ private final class RelayRequestHandler: ChannelInboundHandler {
     private let upstream: URL
     private let observe: OllamaRelayServer.Observer
     private let onPerformance: (String, LocalModelPerformance) -> Void
+    private let onPrediction: (LocalPrediction) -> Void
     private let id = UUID()
     private var head: HTTPRequestHead?
     private var body = Data()
@@ -103,10 +107,12 @@ private final class RelayRequestHandler: ChannelInboundHandler {
     private var parser: OllamaThinkingStream?
 
     init(upstream: URL, observe: @escaping OllamaRelayServer.Observer,
-         onPerformance: @escaping (String, LocalModelPerformance) -> Void) {
+         onPerformance: @escaping (String, LocalModelPerformance) -> Void,
+         onPrediction: @escaping (LocalPrediction) -> Void) {
         self.upstream = upstream
         self.observe = observe
         self.onPerformance = onPerformance
+        self.onPrediction = onPrediction
     }
 
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
@@ -214,6 +220,7 @@ private final class RelayRequestHandler: ChannelInboundHandler {
     }
 
     private func publishPerformance() {
+        if let prediction = parser?.takePrediction() { onPrediction(prediction) }
         if let measurement = parser?.takePerformance(), let model = parser?.model {
             onPerformance(model, measurement)
         }

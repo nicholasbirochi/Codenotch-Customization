@@ -589,6 +589,8 @@ struct NotchRootView: View {
             statusMessage: snapshot.statusMessage,
             blockMessage: snapshot.block?.summary(now: model.now),
             hasTokenUsage: snapshot.tokenUsage != nil,
+                hasDailyTokenUsage: snapshot.dailyTokenUsage != nil,
+            observedHistory: snapshot.observedHistory,
             hasPlan: snapshot.plan != nil,
             hasResetCredits: snapshot.hasAvailableResetCredits,
             localModelName: snapshot.localModel?.name,

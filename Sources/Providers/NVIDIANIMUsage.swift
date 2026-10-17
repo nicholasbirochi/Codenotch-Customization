@@ -6,6 +6,17 @@ struct NVIDIANIMTokenUsage: Equatable {
     var tokensToday = 0
     var callsThisMonth = 0
     var modelTokensThisMonth: [String: Int] = [:]
+    var tokensTotal = 0
+    var tokensThisYear = 0
+    var callsTotal = 0
+    var dailyTokens: [String: Int] = [:]
+    var historyRecords: [ObservedUsageHistory.Record] = []
+
+    func last30Days(now: Date) -> [CodexTokenUsage.DailyBucket] {
+        CodexTokenUsage(dailyUsageBuckets: dailyTokens.map {
+            .init(startDate: $0.key, tokens: $0.value)
+        }).last30Days(now: now, calendar: Self.calendar)
+    }
 
     static let zero = NVIDIANIMTokenUsage()
 
@@ -26,6 +37,15 @@ struct NVIDIANIMTokenUsage: Equatable {
     ) -> NVIDIANIMTokenUsage {
         var usage = NVIDIANIMTokenUsage.zero
         for entry in entries where entry.tokens > 0 {
+            guard entry.at <= now else { continue }
+            usage.tokensTotal += entry.tokens
+            usage.callsTotal += entry.calls
+            if calendar.isDate(entry.at, equalTo: now, toGranularity: .year) {
+                usage.tokensThisYear += entry.tokens
+            }
+            let date = calendar.dateComponents([.year, .month, .day], from: entry.at)
+            let day = String(format: "%04d-%02d-%02d", date.year!, date.month!, date.day!)
+            usage.dailyTokens[day, default: 0] += entry.tokens
             guard calendar.isDate(entry.at, equalTo: now, toGranularity: .month) else { continue }
             usage.tokensThisMonth += entry.tokens
             usage.callsThisMonth += entry.calls
@@ -46,18 +66,24 @@ enum OpenCodeNVIDIAUsage {
 
     static func read(
         database: URL = OpenCodeNVIDIAUsage.database,
-        now: Date = Date()
+        now: Date = Date(),
+        providerID: String? = "nvidia"
     ) -> NVIDIANIMTokenUsage? {
         guard let db = SQLiteStore.open(database) else { return nil }
         defer { sqlite3_close(db) }
 
-        let startOfMonth = Int(NVIDIANIMTokenUsage.startOfMonth(now: now).timeIntervalSince1970 * 1000)
         guard let schema = OpenCodeSchema.of(db) else { return nil }
         let rows = SQLiteStore.rows(
             in: db,
-            sql: schema.usageSQL(startOfMonth: startOfMonth, providerID: "nvidia"),
-            columns: 8
-        )
+            sql: schema.historySQL(in: db, providerID: providerID),
+            columns: 9
+        ).filter { row in
+            guard let stamp = Double(row[0]), stamp.isFinite, stamp >= 0,
+                  stamp <= now.timeIntervalSince1970 * 1000 else { return false }
+            return (1...6).allSatisfy { column in
+                row[column].isEmpty || Int(row[column]).map { $0 >= 0 && $0 < 1_000_000_000_000 } == true
+            }
+        }
 
         let entries: [(at: Date, tokens: Int, calls: Int, model: String?)] = rows.compactMap { row in
             guard let milliseconds = Double(row[0]) else { return nil }
@@ -70,6 +96,13 @@ enum OpenCodeNVIDIAUsage {
                 model: row[7].isEmpty ? nil : row[7]
             )
         }
-        return NVIDIANIMTokenUsage.bucket(entries, now: now)
+        var usage = NVIDIANIMTokenUsage.bucket(entries, now: now)
+        usage.historyRecords = zip(entries, rows).compactMap { entry, row in
+            guard entry.tokens > 0, entry.at <= now else { return nil }
+            let project = row[8].isEmpty ? nil : URL(fileURLWithPath: row[8]).lastPathComponent
+            return ObservedUsageHistory.Record(at: entry.at, tokens: entry.tokens,
+                input: Int(row[2]), output: Int(row[3]), project: project)
+        }
+        return usage
     }
 }

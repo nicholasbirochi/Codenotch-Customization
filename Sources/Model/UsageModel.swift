@@ -362,6 +362,11 @@ struct ProviderSnapshot: Identifiable, Equatable {
     /// Locally sampled cumulative token usage for a custom endpoint.
     var customUsageHistory: [CustomEndpointUsageDay]? = nil
 
+    /// Observed daily token counts, including cache, from a local usage log.
+    var dailyTokenUsage: [CodexTokenUsage.DailyBucket]? = nil
+
+    var observedHistory: ObservedUsageHistory? = nil
+
     /// The number on the cell: the provider's declared primary window — for
     /// Claude, the current session.
     ///
@@ -465,7 +470,11 @@ struct ProviderSnapshot: Identifiable, Equatable {
     /// Rows the tooltip adds for a logged runtime: context used, tokens and
     /// requests today, reasoning share, draft acceptance. Counted here so the
     /// card's budget and its contents cannot disagree.
-    var localLedgerRowCount: Int { localLedger == nil ? 0 : 5 }
+    var localLedgerRowCount: Int {
+        guard let localLedger else { return 0 }
+        return 5 + (localLedger.last?.timeToFirstToken == nil ? 0 : 1)
+            + (localLedger.last?.generationSeconds == nil ? 0 : 1)
+    }
 
     /// Signing in means something different per provider, so the prompt has to
     /// say which door to knock on.

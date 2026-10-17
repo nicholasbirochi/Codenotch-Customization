@@ -3,6 +3,10 @@ import Foundation
 enum NVIDIANIMCredentials {
     static let environmentKey = "NVIDIA_API_KEY"
     static let monthlyBudgetKey = "NVIDIA_NIM_MONTHLY_TOKEN_BUDGET"
+    /// Filed by the person in Keychain Access as a generic password, so the key
+    /// lives in neither a shell profile nor an inherited environment.
+    static let keychainService = "cerebro.nvidia-api-key"
+    static let keychainSource = "Keychain"
 
     struct Credential: Equatable {
         let token: String
@@ -11,8 +15,12 @@ enum NVIDIANIMCredentials {
 
     static func load(
         environment: [String: String] = ProcessInfo.processInfo.environment,
-        home: URL = FileManager.default.homeDirectoryForCurrentUser
+        home: URL = FileManager.default.homeDirectoryForCurrentUser,
+        keychain: () -> String? = NVIDIANIMCredentials.cachedKeychainToken
     ) -> Credential? {
+        if let token = nonEmpty(keychain()) {
+            return Credential(token: token, source: keychainSource)
+        }
         if let token = nonEmpty(environment[environmentKey]) {
             return Credential(token: token, source: environmentKey)
         }
@@ -44,14 +52,32 @@ enum NVIDIANIMCredentials {
 
     static func account(
         environment: [String: String] = ProcessInfo.processInfo.environment,
-        home: URL = FileManager.default.homeDirectoryForCurrentUser
+        home: URL = FileManager.default.homeDirectoryForCurrentUser,
+        keychain: () -> String? = NVIDIANIMCredentials.cachedKeychainToken
     ) -> ProviderAccount? {
-        guard let credential = load(environment: environment, home: home) else { return nil }
+        guard let credential = load(environment: environment, home: home, keychain: keychain) else { return nil }
         return ProviderAccount(
             label: nil,
             plan: nil,
             source: credential.source,
             manageURL: URL(string: "https://build.nvidia.com/settings/api-keys")
+        )
+    }
+
+    /// Held until the item moves, for the reason spelled out in
+    /// `CredentialCache`: the item belongs to Keychain Access, so a data read can
+    /// prompt, and usage polling reaches this every minute.
+    private static let keychainCache = CredentialCache<String> { _ in false }
+
+    static func cachedKeychainToken() -> String? {
+        try? keychainCache.value(
+            itemModifiedAt: { KeychainItem.modifiedAt(service: keychainService) },
+            reload: {
+                guard let token = KeychainItem.read(service: keychainService) else {
+                    throw UsageProviderError.needsAuth
+                }
+                return token
+            }
         )
     }
 

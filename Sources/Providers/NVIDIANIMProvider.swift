@@ -77,11 +77,22 @@ actor NVIDIANIMProvider: UsageProvider {
             let budget = rateLimitWindows.isEmpty ? validatedBudget : nil
             windows += [
                 LimitWindow(
+                    id: "opencode-all",
+                    label: "OpenCode tokens all",
+                    used: usage.tokensTotal
+                ),
+                LimitWindow(
+                    id: "opencode-year",
+                    label: "OpenCode tokens this year",
+                    used: usage.tokensThisYear,
+                    resetsAt: calendar.dateInterval(of: .year, for: now)?.end
+                ),
+                LimitWindow(
                     id: "opencode-month",
-                    label: budget.map { "OpenCode tokens this month · budget \(LimitWindow.compact($0))" }
-                        ?? "OpenCode tokens this month",
+                    label: "OpenCode tokens this month",
                     usedFraction: budget.map { Double(usage.tokensThisMonth) / Double($0) },
                     used: usage.tokensThisMonth,
+                    detail: budget.map { "\(LimitWindow.compact(usage.tokensThisMonth)) · budget \(LimitWindow.compact($0))" },
                     resetsAt: month?.end,
                     duration: month?.duration
                 ),
@@ -93,24 +104,13 @@ actor NVIDIANIMProvider: UsageProvider {
                 ),
                 LimitWindow(
                     id: "opencode-calls",
-                    label: "OpenCode calls this month",
-                    used: usage.callsThisMonth
+                    label: "OpenCode calls",
+                    used: usage.callsTotal
                 )
             ]
-            windows += usage.modelTokensThisMonth
-                .sorted { $0.value == $1.value ? $0.key < $1.key : $0.value > $1.value }
-                .prefix(5)
-                .enumerated()
-                .map { index, model in
-                    LimitWindow(
-                        id: "opencode-model-\(index)",
-                        label: "OpenCode · \(model.key)",
-                        used: model.value
-                    )
-                }
         }
 
-        return ProviderSnapshot(
+        var snapshot = ProviderSnapshot(
             id: providerID,
             displayName: providerName,
             glyph: .nvidia,
@@ -119,8 +119,17 @@ actor NVIDIANIMProvider: UsageProvider {
             windows: windows,
             headlineID: rateLimitWindows.first { $0.id == "tokens" }?.id
                 ?? rateLimitWindows.first?.id
-                ?? (usage == nil ? nil : "opencode-month")
+                ?? (usage == nil ? nil : (validatedBudget == nil ? "opencode-all" : "opencode-month"))
         )
+        snapshot.dailyTokenUsage = usage?.last30Days(now: now)
+        if let usage {
+            var history = ObservedUsageHistory.aggregate(usage.historyRecords, now: now, calendar: calendar)
+            history.observedTotal = usage.tokensTotal
+            history.observedRequests = usage.callsTotal
+            history.model = usage.modelTokensThisMonth.max { $0.value < $1.value }?.key
+            snapshot.observedHistory = history
+        }
+        return snapshot
     }
 
     private func rateLimitWindows(token: String) async throws -> [LimitWindow] {

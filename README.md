@@ -19,6 +19,23 @@ Hover a ring for its limit windows and when they reset. Claude's ring shows the
 same **current session** window Claude Code's own `/usage` leads with, so the
 two never disagree.
 
+## Codenotch Dev (this fork)
+
+Native monitoring updates and test evidence: [Dev monitoring](docs/dev-monitoring.md).
+
+This fork is a standalone app, installed as **Codenotch Dev** with bundle id
+`com.nicholasbirochi.codenotch.nvidia`. The official Codenotch app does not need
+to remain installed. Its Sparkle framework is embedded in the Dev bundle.
+Official automatic updates are intentionally restricted to `com.vinz.codenotch`;
+keeping the official app does not update this fork or merge upstream changes.
+Dev updates are built from this repository to preserve its customizations.
+
+Local OpenCode/NVIDIA and per-model runtime history uses recorded counts only,
+with Today/Week/Month views and explicit unknown project attribution. Copilot
+retains its quota categories; its current source does not provide a dated event
+history or projects. See [monitoring scope and validation](docs/dev-monitoring.md).
+Codenotch observes usage; it does not route tasks between AI models.
+
 ## Download
 
 [![Download for macOS](docs/design/download-macos.svg)](../../releases/latest/download/Codenotch.dmg)

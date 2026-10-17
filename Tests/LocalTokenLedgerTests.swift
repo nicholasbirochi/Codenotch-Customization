@@ -51,7 +51,7 @@ final class LocalTokenLedgerTests: XCTestCase {
         XCTAssertNil(ledger.summary(for: "qwen", now: morning))
         ledger.record(prediction(at: yesterday, input: 1000, output: 50))
         ledger.record(prediction(at: morning, input: 100, output: 300, reasoning: 200, drafts: (492, 176)))
-        ledger.record(prediction(at: night, input: 50, output: 100, reasoning: nil, drafts: (8, 8)))
+        ledger.record(prediction(at: night, input: 50, output: 100, reasoning: 0, drafts: (8, 8)))
         ledger.record(prediction("other", at: night, input: 7, output: 7))
 
         let summary = try XCTUnwrap(ledger.summary(for: "qwen", now: night))
@@ -93,6 +93,15 @@ final class LocalTokenLedgerTests: XCTestCase {
         XCTAssertEqual(summary.draftAcceptanceText, "—")
         XCTAssertEqual(summary.contextText(contextLength: 4096), "—")
         XCTAssertNil(summary.contextFraction(contextLength: 4096))
+    }
+
+    func testMissingCountsAreNotPresentedAsMeasuredZero() {
+        var totals = LocalTokenLedger.Totals()
+        totals.add(prediction(at: Date(), input: nil, output: 10, reasoning: nil))
+        XCTAssertNil(totals.reasoningShare)
+        XCTAssertEqual(LocalTokenLedger.Summary(today: totals, last: nil).tokensTodayText, "— in · 10 out")
+        totals.add(prediction(at: Date(), input: 10, output: 10, reasoning: 5))
+        XCTAssertNil(totals.reasoningShare, "A partial numerator cannot describe all output")
     }
 
     func testTheContextFractionIsTheLastPromptAgainstTheLoadedWindow() throws {

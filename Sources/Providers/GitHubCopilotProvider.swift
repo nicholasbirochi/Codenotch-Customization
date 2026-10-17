@@ -47,7 +47,7 @@ actor GitHubCopilotProvider: UsageProvider {
         }
 
         let windows = try GitHubCopilotUsage.windows(from: data)
-        return ProviderSnapshot(
+        var snapshot = ProviderSnapshot(
             id: id,
             displayName: displayName,
             glyph: glyph,
@@ -58,6 +58,8 @@ actor GitHubCopilotProvider: UsageProvider {
                 ? "premium_interactions" : windows.first?.id,
             plan: GitHubCopilotUsage.plan(from: data)
         )
+        snapshot.observedHistory = .unsupported
+        return snapshot
     }
 }
 

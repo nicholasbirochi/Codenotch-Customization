@@ -172,7 +172,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 + codexProfiles.map { CodexLocalProvider(profile: $0) }
                 + antigravityProfiles.map { AntigravityProvider(profile: $0) }
                 + [GLMProvider(), MiniMaxProvider(web: miniMaxWeb), GrokLocalProvider(), DevinLocalProvider(), OpenCodeProvider(),
-                   NVIDIANIMProvider()]
+                   OpenCodeAllProvider(), NVIDIANIMProvider()]
                 + commandCodeProfiles.map { CommandCodeProvider(profile: $0) }
                 + [GitHubCopilotProvider(), KimiProvider(), KiroProvider(), AmpProvider(),
                    ApifyProvider(), KiloProvider(),
@@ -270,6 +270,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     fleet?.setThinkingModels(models)
                     if models.keys.contains(where: { previous[$0] == nil }) { store?.refresh(providerID: "ollama-local") }
                 }
+                .store(in: &cancellables)
+
+            relay.$ledger
+                .receive(on: RunLoop.main)
+                .sink { [weak fleet] in fleet?.setLedger($0, source: NotchViewModel.ollamaSource) }
                 .store(in: &cancellables)
 
             relay.$performances

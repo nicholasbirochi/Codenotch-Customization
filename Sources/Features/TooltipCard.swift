@@ -700,7 +700,7 @@ private struct RuntimeModelDetails: View {
                 SplitRow(leading: model.memoryLabel, trailing: model.displayedMemoryBytes == nil ? "Unavailable" : model.memoryText)
                 SplitRow(leading: "Context limit", trailing: model.contextText)
                 SplitRow(leading: "Quantization", trailing: model.quantizationText)
-                SplitRow(leading: "Unloads", trailing: model.unloadText(now: now))
+                SplitRow(leading: model.loaded ? "Unloads" : L10n.t("State"), trailing: model.loaded ? model.unloadText(now: now) : L10n.t("Not loaded"))
                 if showsPerformance {
                     SplitRow(leading: "Measured", trailing: performance.map { ElapsedCopy.ago(since: $0.measuredAt, now: now) } ?? "—")
                 }
@@ -710,6 +710,12 @@ private struct RuntimeModelDetails: View {
                     SplitRow(leading: "Requests today", trailing: ledger.requestsTodayText)
                     SplitRow(leading: "Reasoning share", trailing: ledger.reasoningShareText)
                     SplitRow(leading: "Draft accepted", trailing: ledger.draftAcceptanceText)
+                    if let seconds = ledger.last?.timeToFirstToken {
+                        SplitRow(leading: L10n.t("Time to first token (last)"), trailing: UsageFormat.responseDuration(seconds: seconds))
+                    }
+                    if let seconds = ledger.last?.generationSeconds {
+                        SplitRow(leading: L10n.t("Generation time (last)"), trailing: UsageFormat.responseDuration(seconds: seconds))
+                    }
                 }
             }
             .padding(.top, NotchLayout.blockSpacing)
@@ -735,6 +741,12 @@ enum UsageFormat {
         default:
             return "\(value)"
         }
+    }
+
+    static func responseDuration(seconds: Double?) -> String {
+        guard let seconds, seconds.isFinite, seconds >= 0 else { return "—" }
+        let value = seconds < 1 ? seconds * 1000 : seconds
+        return value.formatted(.number.precision(.fractionLength(0...2))) + (seconds < 1 ? " ms" : " s")
     }
 
     static func duration(seconds: Double?) -> String {
@@ -788,7 +800,39 @@ private struct CodexMetricList: View {
     }
 }
 
-private struct CodexDailyUsageChart: View {
+struct DailyTokenUsageChart: View {
+    let buckets: [CodexTokenUsage.DailyBucket]
+    @Environment(\.tooltipSecondaryInk) private var secondaryInk
+
+    private var maximum: Int { max(1, buckets.map(\.tokens).max() ?? 0) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SplitRow(leading: L10n.t("Daily tokens · 30 days"),
+                     trailing: "0–\(UsageFormat.tokens(buckets.map(\.tokens).max() ?? 0))")
+                .padding(.top, NotchLayout.blockSpacing)
+            CodexDailyUsageChart(buckets: buckets, maximum: maximum)
+                .padding(.top, NotchLayout.codexChartTop)
+            HStack {
+                Text(buckets.first.map { $0.startDate.split(separator: "-").suffix(2).reversed().joined(separator: "/") } ?? "—")
+                Spacer()
+                Text(L10n.t("Today"))
+            }
+            .font(Typography.cardBody)
+            .foregroundStyle(secondaryInk)
+            .padding(.top, NotchLayout.codexUsageRowGap)
+            Text(L10n.t("Observed tokens, including cache"))
+                .font(Typography.cardBody)
+                .foregroundStyle(secondaryInk)
+                .padding(.top, NotchLayout.codexUsageRowGap)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(L10n.t("Daily tokens · 30 days"))
+        .accessibilityValue(buckets.map { "\($0.startDate): \($0.tokens)" }.joined(separator: ", "))
+    }
+}
+
+struct CodexDailyUsageChart: View {
     let buckets: [CodexTokenUsage.DailyBucket]
     let maximum: Int
     @Environment(\.tooltipSecondaryInk) private var secondaryInk
@@ -1124,6 +1168,8 @@ struct TooltipCard: View {
             statusMessage: snapshot.statusMessage,
             blockMessage: snapshot.block?.summary(now: now),
             hasTokenUsage: snapshot.tokenUsage != nil || snapshot.customUsageHistory != nil,
+            hasDailyTokenUsage: snapshot.dailyTokenUsage != nil,
+            observedHistory: snapshot.observedHistory,
             hasPlan: snapshot.plan != nil,
             hasResetCredits: snapshot.availableResetCredits(at: now) != nil,
             localModelName: snapshot.localModel?.name,
@@ -1145,6 +1191,11 @@ struct TooltipCard: View {
                 VStack(alignment: .leading, spacing: 0) {
                     ProviderTooltip(activityNote: localActivityNote, snapshot: snapshot, now: now, resetTimeFormat: resetTimeFormat,
                                     showUsagePace: showUsagePace)
+                    if let history = snapshot.observedHistory {
+                        ObservedUsageSection(history: history, providerID: snapshot.id, now: now)
+                    } else if let buckets = snapshot.dailyTokenUsage {
+                        DailyTokenUsageChart(buckets: buckets)
+                    }
                     if let resetCredits = snapshot.availableResetCredits(at: now) {
                         UsageResetCreditsSection(credits: resetCredits, now: now)
                     }

@@ -69,7 +69,7 @@ enum OpenCodeSchema {
     /// message OpenCode summarised keeps the figure and loses the breakdown —
     /// so dropping the column would turn those rows into a zero, which is
     /// worse than the rename this reader was fixed for.
-    func usageSQL(startOfMonth: Int, providerID: String) -> String {
+    func usageSQL(startOfMonth: Int, providerID: String? = nil) -> String {
         let table = self == .v2 ? "session_message" : "message"
         return """
         SELECT time_created,
@@ -83,9 +83,29 @@ enum OpenCodeSchema {
                         json_extract(data, '$.modelID'))
         FROM \(table)
         WHERE \(OpenCodeSchema.assistantPredicate(for: self))
-          AND \(OpenCodeSchema.providerPredicate(providerID))
+          AND \(providerID.map(OpenCodeSchema.providerPredicate) ?? "1 = 1")
           AND time_created >= \(startOfMonth)
         """
+    }
+
+    /// Project metadata is optional in fixtures and old schemas.
+    func historySQL(in db: OpaquePointer?, providerID: String?) -> String {
+        let table = self == .v2 ? "session_message" : "message"
+        let session = self == .v2 ? "session_v2" : "session"
+        func columns(_ table: String) -> Set<String> {
+            Set(SQLiteStore.rows(in: db, sql: "PRAGMA table_info(\(table))", columns: 6).map { $0[1] })
+        }
+        var project = "NULL"
+        let sessionColumns = columns(session)
+        if columns(table).contains("session_id"), sessionColumns.contains("id") {
+            if sessionColumns.contains("directory") {
+                project = "(SELECT s.directory FROM \(session) s WHERE s.id = \(table).session_id LIMIT 1)"
+            } else if sessionColumns.contains("data") {
+                project = "(SELECT CASE WHEN json_valid(s.data) THEN json_extract(s.data, '$.directory') END FROM \(session) s WHERE s.id = \(table).session_id LIMIT 1)"
+            }
+        }
+        return usageSQL(startOfMonth: 0, providerID: providerID)
+            .replacingOccurrences(of: "\nFROM \(table)", with: ",\n       \(project)\nFROM \(table)")
     }
 
     func geminiUsageSQL(startOfMonth: Int) -> String {
