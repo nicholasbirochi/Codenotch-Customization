@@ -27,6 +27,7 @@ struct UsageArchive {
         /// remembered one still says it — a reading restored from the archive
         /// is exactly when "which account is this?" is hardest to answer.
         let plan: String?
+        let observedHistory: ObservedUsageHistory?
     }
 
     private let defaults: UserDefaults
@@ -35,6 +36,17 @@ struct UsageArchive {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+    }
+
+    func loadLocalLedger() -> LocalTokenLedger {
+        guard let data = defaults.data(forKey: "ollamaObservedLedger"), data.count <= 8_000_000,
+              let ledger = try? JSONDecoder().decode(LocalTokenLedger.self, from: data) else { return LocalTokenLedger() }
+        return ledger
+    }
+
+    func saveLocalLedger(_ ledger: LocalTokenLedger) {
+        guard let data = try? JSONEncoder().encode(ledger), data.count <= 8_000_000 else { return }
+        defaults.set(data, forKey: "ollamaObservedLedger")
     }
 
     // MARK: - Back-off
@@ -102,6 +114,7 @@ struct UsageArchive {
                 usageDetail: entry.usageDetail
             )
             snapshot.plan = entry.plan
+            snapshot.observedHistory = entry.observedHistory
             result[entry.id] = (snapshot, entry.fetchedAt)
         }
         return result
@@ -127,7 +140,8 @@ struct UsageArchive {
                 weeklyID: $0.snapshot.weeklyID,
                 tokenUsage: $0.snapshot.tokenUsage,
                 usageDetail: $0.snapshot.usageDetail,
-                plan: $0.snapshot.plan
+                plan: $0.snapshot.plan,
+                observedHistory: $0.snapshot.observedHistory
             )
         }
         guard let data = try? JSONEncoder().encode(entries) else { return }

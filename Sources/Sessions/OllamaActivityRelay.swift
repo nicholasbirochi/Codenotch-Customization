@@ -8,6 +8,14 @@ final class OllamaActivityRelay: ObservableObject {
     @Published private(set) var ready = false
     @Published private(set) var thinkingModels: [String: Date] = [:]
     @Published private(set) var performances: [String: LocalModelPerformance] = [:]
+    @Published private(set) var ledger: LocalTokenLedger
+    private let archive: UsageArchive
+
+    init(archive: UsageArchive? = nil) {
+        self.archive = archive ?? UsageArchive()
+        self.ledger = Runtime.isUnderTest && archive == nil ? LocalTokenLedger() : self.archive.loadLocalLedger()
+    }
+
     private var requests: [UUID: (model: String, since: Date)] = [:]
     private var server: OllamaRelayServer?
     private var revision = UUID()
@@ -34,6 +42,11 @@ final class OllamaActivityRelay: ObservableObject {
                         guard let self, self.revision == revision else { return }
                         self.recordPerformance(measurement, model: model)
                     }
+                }, onPrediction: { [weak self] prediction in
+                    DispatchQueue.main.async {
+                        guard let self, self.revision == revision else { return }
+                        self.recordPrediction(prediction)
+                    }
                 }) { [weak self] id, model, active in
                     // Preserve the single NIO event loop's order so a thinking
                     // stop cannot reach the UI before its start.
@@ -53,6 +66,12 @@ final class OllamaActivityRelay: ObservableObject {
                 self.status = "Cannot start relay. Check that port 11435 is free and the server uses a different port."
             }
         }
+    }
+
+    func recordPrediction(_ prediction: LocalPrediction) {
+        let key = "ollama-local:model:\(OllamaThinkingStream.modelKey(prediction.instance))"
+        ledger.record(prediction, as: key)
+        archive.saveLocalLedger(ledger)
     }
 
     func recordPerformance(_ measurement: LocalModelPerformance, model: String) {

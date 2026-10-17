@@ -1117,6 +1117,13 @@ final class Preferences: ObservableObject {
             for id in novel where Self.isDefaultOnFamily(id) {
                 connectedProviders.insert(id)
             }
+            if novel.contains("opencode-all"), connectedProviders.contains("nvidia-nim") {
+                connectedProviders.insert("opencode-all")
+                if !providerOrder.isEmpty {
+                    providerOrder.insert("opencode-all",
+                        at: providerOrder.firstIndex(of: "nvidia-nim") ?? providerOrder.endIndex)
+                }
+            }
             seenProviders.formUnion(discovered)
             return
         }

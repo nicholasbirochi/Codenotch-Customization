@@ -19,12 +19,17 @@ final class NVIDIANIMTokenUsageTests: XCTestCase {
             (at: now, tokens: 1200, calls: 1, model: "nvidia/nemotron"),
             (at: nvidiaDate(2026, 9, 3), tokens: 300, calls: 1, model: "nvidia/nemotron"),
             (at: nvidiaDate(2026, 8, 28), tokens: 999, calls: 1, model: "nvidia/old"),
+            (at: nvidiaDate(2025, 12, 31), tokens: 11, calls: 1, model: "nvidia/previous-year"),
+            (at: now.addingTimeInterval(86400), tokens: 900, calls: 1, model: "nvidia/future"),
             (at: now, tokens: 0, calls: 1, model: "nvidia/aborted")
         ], now: now)
 
         XCTAssertEqual(usage.tokensThisMonth, 1500)
         XCTAssertEqual(usage.tokensToday, 1200)
         XCTAssertEqual(usage.callsThisMonth, 2)
+        XCTAssertEqual(usage.tokensTotal, 2510)
+        XCTAssertEqual(usage.tokensThisYear, 2499)
+        XCTAssertEqual(usage.callsTotal, 4)
         XCTAssertEqual(usage.modelTokensThisMonth, ["nvidia/nemotron": 1500])
     }
 }
@@ -33,7 +38,7 @@ final class NVIDIANIMCredentialsTests: XCTestCase {
     func testAccountLinksToNvidiaAPIKeys() throws {
         let account = try XCTUnwrap(NVIDIANIMCredentials.account(environment: [
             NVIDIANIMCredentials.environmentKey: "nvapi-test"
-        ]))
+        ], keychain: { nil }))
 
         XCTAssertEqual(account.manageURL?.absoluteString, "https://build.nvidia.com/settings/api-keys")
     }
@@ -47,10 +52,10 @@ final class NVIDIANIMCredentialsTests: XCTestCase {
         try #"export NVIDIA_API_KEY="nvapi-from-zshrc""#
             .write(to: home.appendingPathComponent(".zshrc"), atomically: true, encoding: .utf8)
 
-        let credential = try XCTUnwrap(NVIDIANIMCredentials.load(environment: [:], home: home))
+        let credential = try XCTUnwrap(NVIDIANIMCredentials.load(environment: [:], home: home, keychain: { nil }))
         XCTAssertEqual(credential.token, "nvapi-from-zshrc")
         XCTAssertEqual(credential.source, "~/.zshrc")
-        XCTAssertEqual(NVIDIANIMCredentials.account(environment: [:], home: home)?.source, "~/.zshrc")
+        XCTAssertEqual(NVIDIANIMCredentials.account(environment: [:], home: home, keychain: { nil })?.source, "~/.zshrc")
     }
 
     func testEnvironmentWinsOverShellFiles() throws {
@@ -64,9 +69,37 @@ final class NVIDIANIMCredentialsTests: XCTestCase {
 
         let credential = try XCTUnwrap(NVIDIANIMCredentials.load(
             environment: [NVIDIANIMCredentials.environmentKey: "nvapi-from-env"],
-            home: home
+            home: home,
+            keychain: { nil }
         ))
         XCTAssertEqual(credential.token, "nvapi-from-env")
+        XCTAssertEqual(credential.source, NVIDIANIMCredentials.environmentKey)
+    }
+
+    func testKeychainWinsOverEnvironmentAndShellFiles() throws {
+        let home = FileManager.default.temporaryDirectory
+            .appendingPathComponent("nvidia-home-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        try #"export NVIDIA_API_KEY="nvapi-from-zshrc""#
+            .write(to: home.appendingPathComponent(".zshrc"), atomically: true, encoding: .utf8)
+
+        let credential = try XCTUnwrap(NVIDIANIMCredentials.load(
+            environment: [NVIDIANIMCredentials.environmentKey: "nvapi-from-env"],
+            home: home,
+            keychain: { " nvapi-from-keychain\n" }
+        ))
+        XCTAssertEqual(credential.token, "nvapi-from-keychain")
+        XCTAssertEqual(credential.source, NVIDIANIMCredentials.keychainSource)
+    }
+
+    func testEmptyKeychainItemFallsBackToTheEnvironment() throws {
+        let credential = try XCTUnwrap(NVIDIANIMCredentials.load(
+            environment: [NVIDIANIMCredentials.environmentKey: "nvapi-from-env"],
+            home: FileManager.default.temporaryDirectory,
+            keychain: { "   " }
+        ))
         XCTAssertEqual(credential.source, NVIDIANIMCredentials.environmentKey)
     }
 
@@ -155,6 +188,9 @@ final class OpenCodeNVIDIAUsageTests: XCTestCase {
         XCTAssertEqual(usage.tokensThisMonth, 6600)
         XCTAssertEqual(usage.tokensToday, 6350)
         XCTAssertEqual(usage.callsThisMonth, 2)
+        XCTAssertEqual(usage.tokensTotal, 16599)
+        XCTAssertEqual(usage.tokensThisYear, 16599)
+        XCTAssertEqual(usage.callsTotal, 3)
         XCTAssertEqual(usage.modelTokensThisMonth["nvidia/nemotron-3-ultra-550b-a55b"], 6350)
         XCTAssertEqual(usage.modelTokensThisMonth["nvidia/llama-3.3-nemotron"], 250)
     }
@@ -185,6 +221,21 @@ final class OpenCodeNVIDIAUsageTests: XCTestCase {
 }
 
 final class NVIDIANIMProviderSnapshotTests: XCTestCase {
+    func testRequestedRowsUseNvidiaHistoryAndAllTimeCalls() {
+        let usage = NVIDIANIMTokenUsage(tokensThisMonth: 1200, tokensToday: 300, callsThisMonth: 2,
+            tokensTotal: 9000, tokensThisYear: 6000, callsTotal: 12)
+        let snapshot = NVIDIANIMProvider.snapshot(usage: usage, rateLimitWindows: [],
+            now: nvidiaDate(2026, 9, 15))
+        XCTAssertEqual(snapshot.windows.map(\.label), [
+            "OpenCode tokens all", "OpenCode tokens this year", "OpenCode tokens this month",
+            "OpenCode tokens today", "OpenCode calls"
+        ])
+        XCTAssertEqual(snapshot.windows.map(\.used), [9000, 6000, 1200, 300, 12])
+        XCTAssertEqual(snapshot.headlineID, "opencode-all")
+        XCTAssertNil(snapshot.usedFraction)
+        XCTAssertEqual(snapshot.dailyTokenUsage?.count, 30)
+    }
+
     func testTheProviderUsesTheNvidiaGlyphAsset() throws {
         XCTAssertEqual(ProviderGlyph.nvidia.rawValue, "nvidia")
         XCTAssertEqual(ProviderGlyph.nvidia.assetName, "glyph-nvidia")
@@ -225,7 +276,8 @@ final class NVIDIANIMProviderSnapshotTests: XCTestCase {
         let month = snapshot.windows.first { $0.id == "opencode-month" }
         XCTAssertEqual(snapshot.fidelity, .manual)
         XCTAssertEqual(snapshot.headlineID, "opencode-month")
-        XCTAssertEqual(month?.label, "OpenCode tokens this month · budget 1.0M")
+        XCTAssertEqual(month?.label, "OpenCode tokens this month")
+        XCTAssertEqual(month?.detail, "250k · budget 1.0M")
         XCTAssertEqual(month?.usedFraction, 0.25)
     }
 

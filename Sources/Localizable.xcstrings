@@ -59891,6 +59891,76 @@
           }
         }
       }
+    },
+    "OpenCode All Usage": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uso do OpenCode · All"
+          }
+        }
+      }
+    },
+    "Total tokens recorded": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Total de tokens registrados"
+          }
+        }
+      }
+    },
+    "Tokens this month": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tokens neste mês"
+          }
+        }
+      }
+    },
+    "Tokens today": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tokens hoje"
+          }
+        }
+      }
+    },
+    "Calls this month": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chamadas neste mês"
+          }
+        }
+      }
+    },
+    "Daily tokens · 30 days": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tokens por dia · 30 dias"
+          }
+        }
+      }
+    },
+    "Observed tokens, including cache": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tokens observados, incluindo cache"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

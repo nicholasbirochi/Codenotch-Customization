@@ -223,6 +223,13 @@ enum NotchLayout {
     static let codexUsageRowGap = Design.px(12)
     static let codexChartTop   = Design.px(15)
     static let codexChartHeight = Design.px(115)
+    static func observedUsageHeight(_ history: ObservedUsageHistory) -> CGFloat {
+        let divider = hairline + 2 * codexUsageRowGap
+        if history.unavailable { return 2 * divider + 5 * cardBodyLineHeight }
+        let metrics = history.source == .openCode ? 5 : 3
+        return 3 * divider + CGFloat(6 + metrics + history.projectRowCount) * cardBodyLineHeight
+            + codexChartTop + codexChartHeight
+    }
     /// Title, count, and expiry. The third line is reserved so a missing
     /// expiry cannot shrink the hover region under the card.
     static var codexResetCreditsHeight: CGFloat {
@@ -382,6 +389,11 @@ enum NotchLayout {
             + blockSpacing + 2 * chart + usageDetailChartGap
     }
 
+    static var dailyTokenUsageHeight: CGFloat {
+        blockSpacing + 3 * cardBodyLineHeight + codexChartTop + codexChartHeight
+            + 2 * codexUsageRowGap
+    }
+
     static func cardHeight(windowCount: Int, groupCount: Int = 0,
                            moneyWindowCount: Int = 0, usageDetailGroupCount: Int = 0,
                            sessionCount: Int = 0,
@@ -389,6 +401,8 @@ enum NotchLayout {
                            statusMessage: String? = nil,
                            blockMessage: String? = nil,
                            hasTokenUsage: Bool = false,
+                           hasDailyTokenUsage: Bool = false,
+                           observedHistory: ObservedUsageHistory? = nil,
                            hasPlan: Bool = false,
                            hasResetCredits: Bool = false,
                            localModelName: String? = nil, showsLocalPerformance: Bool = false,
@@ -457,6 +471,12 @@ enum NotchLayout {
 
         height += usageDetailHeight(usageDetailGroupCount,
                                     showsPricing: showsDeepSeekPricing)
+
+        if let observedHistory { height += observedUsageHeight(observedHistory) }
+
+        if hasDailyTokenUsage && observedHistory == nil {
+            height += dailyTokenUsageHeight
+        }
 
         if hasTokenUsage {
             height += codexUsageTop + hairline + blockSpacing

@@ -32,6 +32,18 @@ enum ReleaseNotes {
     static var all: [ReleaseNote] {
         [
             ReleaseNote(
+                version: "1.22.1",
+                headline: L10n.t("Codenotch Dev: observed history for OpenCode and local models."),
+                changes: [
+                    .init(title: L10n.t("Today, Week and Month stay visible"),
+                          detail: L10n.t("Calendar periods, project shares from session metadata, and empty states that keep the controls.")),
+                    .init(title: L10n.t("Separate Ollama model histories"),
+                          detail: L10n.t("The optional local relay retains counts and last-response timings without storing prompt or reply text.")),
+                    .init(title: L10n.t("Copilot quotas preserved"),
+                          detail: L10n.t("Chat, completions and premium quotas keep their own readings. Unsupported history is marked unavailable."))
+                ]
+            ),
+            ReleaseNote(
                 version: "1.22.0",
                 headline: L10n.t("Qoder's credits, more than one Command Code account, and DeepSeek's balance from the wallet that has one."),
                 changes: [
