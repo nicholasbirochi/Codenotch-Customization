@@ -114,4 +114,24 @@ final class LocalObservedViewTests: XCTestCase {
         vm.updateLedger(LocalTokenLedger(), source: LMStudioMetrics.providerID)
         XCTAssertEqual(vm.snapshots.first { $0.id == seven.id }?.observedHistory?.observedTotal, 110)
     }
+
+    func testInstalledModelsTheRelayHasNotServedStartFromAnEmptyChart() throws {
+        let vm = NotchViewModel()
+        vm.now = Date()
+        let runtime = ProviderSnapshot(id: "ollama-local", displayName: "Ollama", glyph: .ollamaLocal,
+            fidelity: .official, status: .ok, windows: [], kind: .localRuntime,
+            localRuntime: .init(models: [.init(name: "qwen3-coder:30b", memoryBytes: 1, contextLength: nil, quantizationLevel: nil,
+                                               memoryKind: .modelSize, loaded: false)]))
+        vm.setLocalMetricsEnabled(true)
+        vm.updateSnapshots([runtime])
+        let cell = try XCTUnwrap(vm.snapshots.first { $0.id == "ollama-local:model:qwen3-coder:30b" })
+        let history = try XCTUnwrap(cell.observedHistory)
+        XCTAssertFalse(history.unavailable)
+        XCTAssertEqual(history.source, .relay)
+        XCTAssertEqual(history.observedTotal, 0)
+        vm.setLocalMetricsEnabled(false)
+        vm.updateSnapshots([runtime])
+        XCTAssertNotEqual(vm.snapshots.first { $0.id == cell.id }?.observedHistory?.unavailable, false,
+                          "Without the relay there is nothing to chart")
+    }
 }

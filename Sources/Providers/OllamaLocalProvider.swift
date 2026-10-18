@@ -36,10 +36,9 @@ final class OllamaLocalProvider: UsageProvider {
         }
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard status == 200 else { throw OllamaError.http(status) }
-        var reading = try OllamaLocalUsage.parse(data)
-        if reading.models.isEmpty, let installed = await installedModel() {
-            reading = LocalRuntimeReading(models: [installed])
-        }
+        let loaded = try OllamaLocalUsage.parse(data)
+        let reading = LocalRuntimeReading(
+            models: OllamaLocalUsage.merging(loaded: loaded.models, installed: await installedModels()))
         return ProviderSnapshot(id: id, displayName: displayName, glyph: glyph,
                                 fidelity: .official, status: .ok, windows: [],
                                 kind: kind, localRuntime: reading)
@@ -47,13 +46,13 @@ final class OllamaLocalProvider: UsageProvider {
 
     /// Best effort: an unreadable listing leaves the idle summary in place
     /// rather than turning a reachable server into an error.
-    private func installedModel() async -> LocalRuntimeReading.Model? {
+    private func installedModels() async -> [LocalRuntimeReading.Model] {
         var request = URLRequest(url: endpoint.appendingPathComponent("api/tags"))
         request.timeoutInterval = 3
         request.cachePolicy = .reloadIgnoringLocalCacheData
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         guard let (data, response) = try? await session.data(for: request),
-              (response as? HTTPURLResponse)?.statusCode == 200 else { return nil }
+              (response as? HTTPURLResponse)?.statusCode == 200 else { return [] }
         return OllamaLocalUsage.parseInstalled(data)
     }
 
