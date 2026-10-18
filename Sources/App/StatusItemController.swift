@@ -333,7 +333,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             empty.isEnabled = false
             menu.addItem(empty)
         } else {
-            let cells = cells()
+            let cells = cells().flatMap(\.modelCells)
             for snapshot in snapshots {
                 menu.addItem(headerItem(for: snapshot, now: now))
                 for line in Self.detailLines(for: snapshot, cells: cells, activity: activity,

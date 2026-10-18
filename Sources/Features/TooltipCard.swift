@@ -581,6 +581,21 @@ private struct ProviderTooltip: View {
     let resetTimeFormat: ResetTimeFormat
     let showUsagePace: Bool
     @Environment(\.tooltipSecondaryInk) private var secondaryInk
+    @AppStorage private var periodRaw: String
+
+    init(activityNote: String?, snapshot: ProviderSnapshot, now: Date,
+         resetTimeFormat: ResetTimeFormat, showUsagePace: Bool) {
+        self.activityNote = activityNote
+        self.snapshot = snapshot
+        self.now = now
+        self.resetTimeFormat = resetTimeFormat
+        self.showUsagePace = showUsagePace
+        _periodRaw = AppStorage(wrappedValue: UsageHistoryPeriod.month.rawValue,
+                                UsageHistoryPeriod.preferenceKey(snapshot.id))
+    }
+
+    /// The period the card's sum is for, so each model's pair adds up to it.
+    private var groupPeriod: UsageHistoryPeriod { UsageHistoryPeriod(rawValue: periodRaw) ?? .month }
 
     /// Only worth saying when the numbers are not current. A remembered reading
     /// has to be dated, or it quietly passes itself off as live.
@@ -615,7 +630,8 @@ private struct ProviderTooltip: View {
                           ? L10n.t("\(snapshot.localModel?.brand?.displayName ?? snapshot.displayName) · Local")
                           : L10n.t("\(snapshot.displayName) Usage"),
                           subtitle: snapshot.plan,
-                          note: activityNote ?? (snapshot.localModel?.brand != nil ? snapshot.displayName : readingAge)) {
+                          note: activityNote ?? (snapshot.isLocalModelGroup ? groupPeriod.title
+                                : snapshot.localModel?.brand != nil ? snapshot.displayName : readingAge)) {
                 ProviderGlyphView(glyph: snapshot.glyph, customIconFilename: snapshot.customIconFilename)
                     .foregroundStyle(Palette.textPrimary)
             }
@@ -631,6 +647,8 @@ private struct ProviderTooltip: View {
                     .foregroundStyle(secondaryInk)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.top, NotchLayout.headerToBlock)
+            } else if snapshot.isLocalModelGroup {
+                LocalModelGroupDetails(models: snapshot.localModelCells, period: groupPeriod)
             } else if let localModel = snapshot.localModel {
                 RuntimeModelDetails(model: localModel, performance: snapshot.localPerformance,
                                     showsPerformance: snapshot.showsLocalPerformance,
@@ -669,6 +687,53 @@ private struct ProviderTooltip: View {
                 }
                 .padding(.bottom, groupedWindows.contains(where: { $0.title != nil }) ? Design.px(8) : 0)
             }
+        }
+    }
+}
+
+/// One block per model, smallest first, split by a rule: the runtime's mark,
+/// the model's name, and what went in and came out over the card's period.
+/// No speed here — the card is about volume, and an unrecorded model reads 0.
+private struct LocalModelGroupDetails: View {
+    let models: [ProviderSnapshot]
+    let period: UsageHistoryPeriod
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(models.enumerated()), id: \.element.id) { index, cell in
+                if index > 0 {
+                    Rectangle()
+                        .fill(Palette.ringTrack)
+                        .frame(height: NotchLayout.hairline)
+                        .padding(.vertical, NotchLayout.blockSpacing)
+                }
+                block(cell)
+                    .padding(.top, index == 0 ? NotchLayout.headerToBlock : 0)
+            }
+        }
+        .font(Typography.cardBody)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func block(_ cell: ProviderSnapshot) -> some View {
+        let name = cell.localModel?.name ?? cell.displayName
+        let split = cell.periodTokenSplit(period) ?? (0, 0)
+        return VStack(alignment: .leading, spacing: NotchLayout.sessionRowGap) {
+            HStack(spacing: Design.px(10)) {
+                ProviderGlyphView(glyph: cell.glyph, customIconFilename: cell.customIconFilename,
+                                  size: NotchLayout.cardBodyLineHeight)
+                    .foregroundStyle(Palette.textPrimary)
+                Text(L10n.t("Local")).foregroundStyle(Palette.textPrimary)
+            }
+            .frame(height: NotchLayout.cardBodyLineHeight)
+            Text(name)
+                .foregroundStyle(Palette.textPrimary)
+                .lineLimit(2)
+                .truncationMode(.middle)
+                .frame(height: NotchLayout.modelNameHeight(name), alignment: .topLeading)
+                .accessibilityLabel(name)
+            SplitRow(leading: L10n.t("Input"), trailing: LimitWindow.compact(split.input))
+            SplitRow(leading: L10n.t("Output"), trailing: LimitWindow.compact(split.output))
         }
     }
 }
@@ -1151,7 +1216,7 @@ struct TooltipCard: View {
     /// The phase a local model is in, and the queue behind it, for the header.
     /// Ollama's relay only knows thinking; LM Studio's poll names the phase.
     private var localActivityNote: String? {
-        guard snapshot.localModel != nil, let activity, activity.state == .working else { return nil }
+        guard snapshot.isLocalCell, let activity, activity.state == .working else { return nil }
         return activity.note ?? activity.sessions.first?.name ?? L10n.t("Thinking")
     }
 
@@ -1163,7 +1228,7 @@ struct TooltipCard: View {
             groupCount: snapshot.windowGroupCount,
             moneyWindowCount: snapshot.windows.filter { $0.money != nil }.count,
             usageDetailGroupCount: snapshot.usageDetail?.visibleGroups.count ?? 0,
-            sessionCount: snapshot.localModel == nil ? (activity?.sessions.count ?? 0) : 0,
+            sessionCount: snapshot.isLocalCell ? 0 : (activity?.sessions.count ?? 0),
             sessionCap: sessionCap,
             statusMessage: snapshot.statusMessage,
             blockMessage: snapshot.block?.summary(now: now),
@@ -1173,6 +1238,7 @@ struct TooltipCard: View {
             hasPlan: snapshot.plan != nil,
             hasResetCredits: snapshot.availableResetCredits(at: now) != nil,
             localModelName: snapshot.localModel?.name,
+            localModelGroupNames: snapshot.localModelGroupNames,
             showsLocalPerformance: snapshot.showsLocalPerformance,
                 localLedgerRows: snapshot.localLedgerRowCount,
             compactRowCount: snapshot.compactRowCount,
@@ -1209,7 +1275,7 @@ struct TooltipCard: View {
                                             schedule: deepSeekPricingSchedule,
                                             showsPricing: deepSeekPricingEnabled)
                     }
-                    if let activity, snapshot.localModel == nil {
+                    if let activity, !snapshot.isLocalCell {
                         SessionList(summary: activity, now: now, cap: sessionCap,
                                     onFocus: onFocusSession)
                     }

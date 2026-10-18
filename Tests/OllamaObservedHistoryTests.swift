@@ -1,4 +1,5 @@
 import XCTest
+import SwiftUI
 @testable import Codenotch
 
 final class OllamaObservedHistoryTests: XCTestCase {
@@ -105,14 +106,14 @@ final class LocalObservedViewTests: XCTestCase {
             fidelity: .official, status: .ok, windows: [], kind: .localRuntime,
             localRuntime: .init(models: []))])
         vm.updateLedger(restored.ledger, source: NotchViewModel.ollamaSource)
-        let seven = try XCTUnwrap(vm.snapshots.first { $0.id == "ollama-local:model:qwen:7b" })
-        let fourteen = try XCTUnwrap(vm.snapshots.first { $0.id == "ollama-local:model:qwen:14b" })
+        let seven = try XCTUnwrap(vm.snapshots.flatMap(\.modelCells).first { $0.id == "ollama-local:model:qwen:7b" })
+        let fourteen = try XCTUnwrap(vm.snapshots.flatMap(\.modelCells).first { $0.id == "ollama-local:model:qwen:14b" })
         XCTAssertEqual(seven.observedHistory?.observedTotal, 110)
         XCTAssertEqual(fourteen.observedHistory?.observedTotal, 220)
         XCTAssertEqual(seven.localModel?.loaded, false, "Recorded unloaded models remain inspectable")
         XCTAssertEqual(seven.localPerformance?.tokensPerSecond, 50)
         vm.updateLedger(LocalTokenLedger(), source: LMStudioMetrics.providerID)
-        XCTAssertEqual(vm.snapshots.first { $0.id == seven.id }?.observedHistory?.observedTotal, 110)
+        XCTAssertEqual(vm.snapshots.flatMap(\.modelCells).first { $0.id == seven.id }?.observedHistory?.observedTotal, 110)
     }
 
     func testInstalledModelsTheRelayHasNotServedStartFromAnEmptyChart() throws {
@@ -124,14 +125,14 @@ final class LocalObservedViewTests: XCTestCase {
                                                memoryKind: .modelSize, loaded: false)]))
         vm.setLocalMetricsEnabled(true)
         vm.updateSnapshots([runtime])
-        let cell = try XCTUnwrap(vm.snapshots.first { $0.id == "ollama-local:model:qwen3-coder:30b" })
+        let cell = try XCTUnwrap(vm.snapshots.flatMap(\.modelCells).first { $0.id == "ollama-local:model:qwen3-coder:30b" })
         let history = try XCTUnwrap(cell.observedHistory)
         XCTAssertFalse(history.unavailable)
         XCTAssertEqual(history.source, .relay)
         XCTAssertEqual(history.observedTotal, 0)
         vm.setLocalMetricsEnabled(false)
         vm.updateSnapshots([runtime])
-        XCTAssertNotEqual(vm.snapshots.first { $0.id == cell.id }?.observedHistory?.unavailable, false,
+        XCTAssertNotEqual(vm.snapshots.flatMap(\.modelCells).first { $0.id == cell.id }?.observedHistory?.unavailable, false,
                           "Without the relay there is nothing to chart")
     }
 
@@ -156,7 +157,7 @@ final class LocalObservedViewTests: XCTestCase {
         defer { UserDefaults.standard.set(saved, forKey: key) }
         UserDefaults.standard.removeObject(forKey: key)
 
-        let empty = try XCTUnwrap(vm.snapshots.first { $0.id == id })
+        let empty = try XCTUnwrap(vm.snapshots.flatMap(\.modelCells).first { $0.id == id })
         XCTAssertEqual(empty.headlineText, "0", "Nothing logged is 0, not a dash")
         XCTAssertTrue(empty.headlineIsPending(period: .month))
         XCTAssertEqual(empty.periodTokensText(.month), "0 tokens this month")
@@ -167,7 +168,7 @@ final class LocalObservedViewTests: XCTestCase {
             ledger.record(.init(instance: "qwen3:8b", at: at, inputTokens: input, outputTokens: output), as: id)
         }
         vm.updateLedger(ledger, source: NotchViewModel.ollamaSource)
-        let cell = try XCTUnwrap(vm.snapshots.first { $0.id == id })
+        let cell = try XCTUnwrap(vm.snapshots.flatMap(\.modelCells).first { $0.id == id })
         XCTAssertEqual(cell.periodTokens(.today), 1_200)
         XCTAssertEqual(cell.periodTokens(.week), 6_700)
         XCTAssertEqual(cell.periodTokens(.month), 50_700)
@@ -180,5 +181,62 @@ final class LocalObservedViewTests: XCTestCase {
         UserDefaults.standard.set(UsageHistoryPeriod.week.rawValue, forKey: key)
         XCTAssertEqual(cell.headlineText, LimitWindow.compact(6_700), "The chart's period picker drives the cell")
         XCTAssertEqual(cell.periodTokensText(cell.observedPeriod), "\(LimitWindow.compact(6_700)) tokens this week")
+    }
+
+    @MainActor
+    func testOneOllamaCardListsQwenSmallestFirstAndSumsOnlyWhatWasLogged() throws {
+        XCTAssertEqual(NotchViewModel.parameterBillions("qwen2.5-coder:14b"), 14)
+        XCTAssertEqual(NotchViewModel.parameterBillions("qwen3-coder:30b"), 30)
+        XCTAssertNil(NotchViewModel.parameterBillions("qwen3:latest"))
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        let now = calendar.date(from: DateComponents(year: 2026, month: 10, day: 15, hour: 12))!
+        let names = ["qwen2.5-coder:14b", "qwen2.5-coder:7b", "qwen3-coder:30b"]
+        let vm = NotchViewModel()
+        vm.now = now
+        vm.updateSnapshots([ProviderSnapshot(id: "ollama-local", displayName: "Ollama", glyph: .ollamaLocal,
+            fidelity: .official, status: .ok, windows: [], kind: .localRuntime,
+            localRuntime: .init(models: names.map { .init(name: $0, memoryBytes: 1, contextLength: nil,
+                quantizationLevel: nil, memoryKind: .modelSize, loaded: false) }))])
+        XCTAssertEqual(vm.snapshots.count, 1, "One card, not one per model")
+        let empty = vm.snapshots[0]
+        XCTAssertEqual(empty.localModelGroupNames, ["qwen2.5-coder:7b", "qwen2.5-coder:14b", "qwen3-coder:30b"])
+        XCTAssertEqual(empty.periodTokens(.month), 0, "Nothing logged is 0")
+        XCTAssertTrue(empty.localModelCells.allSatisfy { $0.periodTokenSplit(.month)! == (0, 0) })
+
+        var ledger = LocalTokenLedger(calendar: calendar)
+        let seven = "ollama-local:model:qwen2.5-coder:7b"
+        ledger.record(.init(instance: "qwen2.5-coder:7b", at: now.addingTimeInterval(-3600),
+                            inputTokens: 43, outputTokens: 2), as: seven)
+        vm.updateLedger(ledger, source: NotchViewModel.ollamaSource)
+        let group = vm.snapshots[0]
+        XCTAssertEqual(group.periodTokens(.month), 45, "Input and output of every model, summed")
+        XCTAssertEqual(group.localModelCells.map { $0.periodTokenSplit(.month)!.input }, [43, 0, 0])
+        XCTAssertEqual(group.localModelCells.map { $0.periodTokenSplit(.month)!.output }, [2, 0, 0])
+
+        guard let directory = ProcessInfo.processInfo.environment["OLLAMA_RENDER_DIRECTORY"] else { return }
+        vm.isExpanded = true
+        vm.edge = .right
+        vm.showsNotchReadings = true
+        for (name, hovered) in [("ollama-group-closed.png", nil), ("ollama-group-hover.png", 0)] as [(String, Int?)] {
+            vm.hoveredIndex = hovered
+            let size = vm.panelSize
+            let renderer = ImageRenderer(content: NotchRootView(model: vm).frame(width: size.width, height: size.height)
+                .background(Color.black).environment(\.colorScheme, .dark))
+            renderer.scale = 2
+            let bitmap = try XCTUnwrap(NSBitmapImageRep(data: XCTUnwrap(renderer.nsImage?.tiffRepresentation)))
+            try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
+                .write(to: URL(fileURLWithPath: directory).appendingPathComponent(name))
+        }
+    }
+
+    func testLMStudioModelsKeepTheirOwnCells() throws {
+        let runtime = LMStudioFixtures.snapshot(try LMStudioUsage.parse(LMStudioFixtures.listing(instances: [
+            ("qwen3.8-27b", "qwen/qwen3.8-27b", 32_768), ("flash-next-test", "qwen/qwen3.8-flash-next", 8192)
+        ])))
+        let vm = NotchViewModel()
+        vm.updateSnapshots([runtime])
+        XCTAssertEqual(vm.snapshots.count, 2)
+        XCTAssertFalse(vm.snapshots.contains { $0.isLocalModelGroup })
     }
 }

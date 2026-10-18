@@ -33,15 +33,15 @@ final class LMStudioViewTests: XCTestCase {
         let speed = try XCTUnwrap(LocalModelPerformance(outputTokens: 300, tokensPerSecond: 17.9))
         vm.updatePerformances([qwen: speed], source: "lmstudio")
         XCTAssertEqual(vm.snapshots.first { $0.id == qwen }?.localPerformance, speed)
-        XCTAssertNil(vm.snapshots[0].localPerformance, "keyed per source; an Ollama cell never reads LM Studio's")
+        XCTAssertNil(vm.snapshots[0].localModelCells[0].localPerformance, "keyed per source; an Ollama cell never reads LM Studio's")
 
         // Ollama's relay coming and going leaves LM Studio's reading alone.
         let relayed = try XCTUnwrap(LocalModelPerformance(outputTokens: 30, durationNanoseconds: 1_000_000_000))
         vm.setLocalMetricsEnabled(true)
         vm.updatePerformances(["qwen3:latest": relayed])
-        XCTAssertEqual(vm.snapshots[0].localPerformance, relayed)
+        XCTAssertEqual(vm.snapshots[0].localModelCells[0].localPerformance, relayed)
         vm.setLocalMetricsEnabled(false)
-        XCTAssertNil(vm.snapshots[0].localPerformance)
+        XCTAssertNil(vm.snapshots[0].localModelCells[0].localPerformance)
         XCTAssertEqual(vm.snapshots.first { $0.id == qwen }?.localPerformance, speed)
         XCTAssertEqual(vm.snapshots.first { $0.id == qwen }?.headlineText, "\(17.9.formatted(.number.precision(.fractionLength(0...1)))) tok/s")
     }
@@ -163,7 +163,7 @@ final class LMStudioViewTests: XCTestCase {
         for controller in fleet.controllersForTesting {
             let model = controller.model
             XCTAssertEqual(model.snapshots.first { $0.id == qwen }?.localPerformance, speed)
-            XCTAssertEqual(model.snapshots.last?.localPerformance, relayed)
+            XCTAssertEqual(model.snapshots.last?.localModelCells.first?.localPerformance, relayed)
             XCTAssertEqual(model.activity(for: model.snapshots.first { $0.id == qwen }!)?.sessions.first?.name, "Generating")
             XCTAssertNotNil(model.snapshots.first { $0.id == qwen }?.localLedger)
         }

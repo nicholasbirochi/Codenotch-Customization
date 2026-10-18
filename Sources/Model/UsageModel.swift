@@ -320,6 +320,18 @@ struct ProviderSnapshot: Identifiable, Equatable {
 
     var providerID: String { sourceProviderID ?? id }
 
+    /// A runtime's models gathered into one card: each still decorated as its
+    /// own cell, read by the card's hover panel, ordered by size.
+    var localModelCells: [ProviderSnapshot] = []
+    var isLocalModelGroup: Bool { !localModelCells.isEmpty }
+    /// The grouped models' names, in panel order, for sizing the hover card.
+    var localModelGroupNames: [String] { localModelCells.map { $0.localModel?.name ?? $0.displayName } }
+    /// A model or a group of them: neither has a quota, an arc or sessions.
+    var isLocalCell: Bool { localModel != nil || isLocalModelGroup }
+    /// The group's models in its place, any other cell as it is: what the
+    /// menu lists line by line.
+    var modelCells: [ProviderSnapshot] { isLocalModelGroup ? localModelCells : [self] }
+
     var notchSnapshots: [ProviderSnapshot] {
         guard kind == .localRuntime, localModel == nil else { return [self] }
         return (localRuntime?.models ?? []).map { model in
@@ -447,9 +459,23 @@ struct ProviderSnapshot: Identifiable, Equatable {
     /// same figure as the chart's "Tokens in period". Nothing logged is 0, not
     /// a dash: the relay is the record, and it has none.
     func periodTokens(_ period: UsageHistoryPeriod) -> Int? {
+        if isLocalModelGroup {
+            return localModelCells.reduce(0) { sum, cell in
+                sum + (cell.periodTokenSplit(period).map { $0.input + $0.output } ?? 0)
+            }
+        }
         guard localModel != nil, providerID == "ollama-local" else { return nil }
         guard let observedHistory, !observedHistory.unavailable else { return 0 }
         return observedHistory.slice(period).total
+    }
+
+    /// Prompt and response tokens the relay logged in `period` for one model
+    /// (`prompt_eval_count` and `eval_count`). Nothing logged is 0 each.
+    func periodTokenSplit(_ period: UsageHistoryPeriod) -> (input: Int, output: Int)? {
+        guard localModel != nil, providerID == "ollama-local" else { return nil }
+        guard let observedHistory, !observedHistory.unavailable else { return (0, 0) }
+        let slice = observedHistory.slice(period)
+        return (slice.input ?? 0, slice.output ?? 0)
     }
 
     /// The same figure with its unit and period, for the menu and VoiceOver,
@@ -492,7 +518,7 @@ struct ProviderSnapshot: Identifiable, Equatable {
 
     /// An empty local inventory still confirms server connectivity; an absent
     /// reading must not be shown as measured zero usage.
-    var hasReading: Bool { localRuntime != nil || localModel != nil || !windows.isEmpty }
+    var hasReading: Bool { localRuntime != nil || isLocalCell || !windows.isEmpty }
 
     /// Group headings occupy space in both the card and its hover region.
     var windowGroupCount: Int { Set(windows.compactMap(\.group)).count }
@@ -563,7 +589,7 @@ struct ProviderSnapshot: Identifiable, Equatable {
     /// What the tooltip says instead of limit rows when there is nothing to show.
     var statusMessage: String? {
         if kind == .localRuntime {
-            if localModel != nil { return nil }
+            if isLocalCell { return nil }
             if let localRuntime {
                 return localRuntime.models.isEmpty ? localRuntime.summary : nil
             }
