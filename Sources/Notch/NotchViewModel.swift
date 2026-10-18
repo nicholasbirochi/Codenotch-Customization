@@ -24,7 +24,8 @@ final class NotchViewModel: ObservableObject {
         self.providerSnapshots = providerSnapshots
         let providerSnapshots = addingRecordedModels(to: providerSnapshots)
         let hoveredID = hoveredSnapshot?.id
-        let next = ProviderOrder.cells(from: providerSnapshots, keeping: snapshots).map(decorated).map(Costs.decorate)
+        let cells = ProviderOrder.cells(from: providerSnapshots, keeping: snapshots).map(decorated)
+        let next = Self.groupingLocalModels(cells).map(Costs.decorate)
         let nextHoveredIndex = hoveredID.flatMap { id in next.firstIndex { $0.id == id } }
         if hoveredIndex != nextHoveredIndex { hoveredIndex = nextHoveredIndex }
         snapshots = next
@@ -63,7 +64,45 @@ final class NotchViewModel: ObservableObject {
         }
     }
 
+    /// Ollama's models share one card: three rings for one runtime crowded
+    /// the notch for figures read now and then. The card sits where the
+    /// first model did; its hover panel lists them smallest first, a tie by name.
+    static func groupingLocalModels(_ cells: [ProviderSnapshot],
+                                    of providerID: String = ollamaSource) -> [ProviderSnapshot] {
+        let isModel = { (cell: ProviderSnapshot) in cell.providerID == providerID && cell.localModel != nil }
+        guard let index = cells.firstIndex(where: isModel) else { return cells }
+        let models = cells.filter(isModel)
+        let first = models[0]
+        var group = ProviderSnapshot(id: providerID, displayName: first.displayName, glyph: first.glyph,
+                                     fidelity: first.fidelity, status: first.status, windows: [],
+                                     kind: .localRuntime)
+        group.localModelCells = models.sorted { lhs, rhs in
+            let leftName = lhs.localModel?.name ?? "", rightName = rhs.localModel?.name ?? ""
+            let left = parameterBillions(leftName) ?? .infinity
+            let right = parameterBillions(rightName) ?? .infinity
+            return left == right ? leftName.localizedStandardCompare(rightName) == .orderedAscending : left < right
+        }
+        var result = cells.filter { !isModel($0) }
+        result.insert(group, at: index)
+        return result
+    }
+
+    /// The size tag in a model name — `qwen2.5-coder:14b` is 14 — read from
+    /// the tag after the colon, so the `2.5` in the family name is not it.
+    static func parameterBillions(_ name: String) -> Double? {
+        let tag = name.split(separator: ":").dropFirst().joined(separator: ":").lowercased()
+        for part in tag.split(whereSeparator: { $0 == "-" || $0 == "_" }) where part.hasSuffix("b") {
+            if let value = Double(part.dropLast()), value > 0 { return value }
+        }
+        return nil
+    }
+
     private func decorated(_ snapshot: ProviderSnapshot) -> ProviderSnapshot {
+        if snapshot.isLocalModelGroup {
+            var snapshot = snapshot
+            snapshot.localModelCells = snapshot.localModelCells.map(decorated)
+            return snapshot
+        }
         guard let model = snapshot.localModel else { return snapshot }
         var snapshot = snapshot
         let shows = localMetricsEnabled || snapshot.localRuntimeMeasuresSpeed
@@ -148,13 +187,13 @@ final class NotchViewModel: ObservableObject {
     @Published private(set) var refreshingCells: Set<String> = []
 
     func isRefreshing(_ snapshot: ProviderSnapshot) -> Bool {
-        snapshot.localModel == nil
-            ? refreshing.contains(snapshot.providerID)
-            : refreshingCells.contains(snapshot.id)
+        snapshot.isLocalCell
+            ? refreshingCells.contains(snapshot.id)
+            : refreshing.contains(snapshot.providerID)
     }
 
     func refresh(_ snapshot: ProviderSnapshot, using refreshProvider: (String) async -> Void) async {
-        guard snapshot.localModel != nil else {
+        guard snapshot.isLocalCell else {
             await refreshProvider(snapshot.providerID)
             return
         }
@@ -1206,6 +1245,9 @@ final class NotchViewModel: ObservableObject {
     /// A provider with no activity source gets none, rather than borrowing
     /// somebody else's.
     func activity(for snapshot: ProviderSnapshot) -> ActivitySummary? {
+        if snapshot.isLocalModelGroup {
+            return snapshot.localModelCells.lazy.compactMap { self.activity(for: $0) }.first
+        }
         guard let model = snapshot.localModel else { return activity(for: snapshot.providerID) }
         if let local = localActivities[snapshot.id] {
             return ActivitySummary(sessions: [AgentSession(id: snapshot.id, name: local.label,
@@ -1316,7 +1358,7 @@ final class NotchViewModel: ObservableObject {
                 groupCount: Set(snapshot.windows.compactMap(\.group)).count,
                 moneyWindowCount: snapshot.windows.filter { $0.money != nil }.count,
                 usageDetailGroupCount: snapshot.usageDetail?.visibleGroups.count ?? 0,
-                sessionCount: snapshot.localModel == nil ? sessionCap + 1 : 0,
+                sessionCount: snapshot.isLocalCell ? 0 : sessionCap + 1,
                 sessionCap: sessionCap,
                 statusMessage: snapshot.statusMessage,
                 blockMessage: snapshot.block?.summary(now: now),
@@ -1326,6 +1368,7 @@ final class NotchViewModel: ObservableObject {
                 hasPlan: snapshot.plan != nil,
                 hasResetCredits: snapshot.hasAvailableResetCredits,
                 localModelName: snapshot.localModel?.name,
+                localModelGroupNames: snapshot.localModelGroupNames,
                 showsLocalPerformance: snapshot.showsLocalPerformance,
                 localLedgerRows: snapshot.localLedgerRowCount,
                 compactRowCount: snapshot.compactRowCount,

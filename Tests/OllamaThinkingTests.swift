@@ -83,9 +83,13 @@ final class OllamaThinkingActivityTests: XCTestCase {
             fidelity: .official, status: .ok, windows: [], kind: .localRuntime, localRuntime: reading)
         let model = NotchViewModel()
         model.updateSnapshots([snapshot])
-        let gemma = model.snapshots[0], qwen = model.snapshots[1]
+        let group = try XCTUnwrap(model.snapshots.first)
+        let gemma = try XCTUnwrap(group.localModelCells.first { $0.localModel?.name == "gemma4:e4b" })
+        let qwen = try XCTUnwrap(group.localModelCells.first { $0.localModel?.name == "qwen3:0.6b" })
+        XCTAssertNil(model.activity(for: group))
         model.thinkingModels = ["gemma4:e4b": Date()]
         XCTAssertEqual(model.activity(for: gemma)?.state, .working)
+        XCTAssertEqual(model.activity(for: group)?.state, .working)
         XCTAssertNil(model.activity(for: qwen))
         XCTAssertNil(model.activity(for: "ollama-local"))
         let directory = ProcessInfo.processInfo.environment["OLLAMA_THINKING_RENDER_DIRECTORY"]

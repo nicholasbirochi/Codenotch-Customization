@@ -59932,6 +59932,26 @@
         }
       }
     },
+    "Input": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Entrada"
+          }
+        }
+      }
+    },
+    "Output": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saída"
+          }
+        }
+      }
+    },
     "Calls this month": {
       "localizations": {
         "pt-BR": {

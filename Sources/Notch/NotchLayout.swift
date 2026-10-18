@@ -405,7 +405,9 @@ enum NotchLayout {
                            observedHistory: ObservedUsageHistory? = nil,
                            hasPlan: Bool = false,
                            hasResetCredits: Bool = false,
-                           localModelName: String? = nil, showsLocalPerformance: Bool = false,
+                           localModelName: String? = nil,
+                           localModelGroupNames: [String] = [],
+                           showsLocalPerformance: Bool = false,
                            localLedgerRows: Int = 0,
                            compactRowCount: Int = 0,
                            showsDeepSeekPricing: Bool = true,
@@ -420,7 +422,15 @@ enum NotchLayout {
             height += headerToBlock + bodyTextHeight(blockMessage)
         }
 
-        if let localModelName {
+        if !localModelGroupNames.isEmpty {
+            // Match LocalModelGroupDetails: per model a mark line, the name and
+            // the input/output pair, with a rule and its gaps between models.
+            let blocks = localModelGroupNames.reduce(CGFloat(0)) { sum, name in
+                sum + 3 * cardBodyLineHeight + modelNameHeight(name) + 3 * sessionRowGap
+            }
+            height += headerToBlock + blocks
+                + CGFloat(localModelGroupNames.count - 1) * (hairline + 2 * blockSpacing)
+        } else if let localModelName {
             // Match RuntimeModelDetails so the panel and hover region fit all
             // rows: the runtime's own, the speed pair, and a logged runtime's
             // ledger lines.

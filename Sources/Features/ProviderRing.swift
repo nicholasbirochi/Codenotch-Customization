@@ -302,7 +302,7 @@ struct ProviderCell: View {
     var body: some View {
         VStack(spacing: NotchLayout.ringLabelGap) {
             ProviderRing(
-                usedFraction: snapshot.localModel == nil && snapshot.hasReading ? snapshot.ringFraction : nil,
+                usedFraction: !snapshot.isLocalCell && snapshot.hasReading ? snapshot.ringFraction : nil,
                 glyph: snapshot.glyph,
                 customIconFilename: snapshot.customIconFilename,
                 isStale: snapshot.status.isStale || !snapshot.hasReading,
@@ -335,7 +335,9 @@ struct ProviderCell: View {
     var accessibilityText: String {
         snapshot.localModel.map {
             "\($0.brand.map { "\($0.displayName), " } ?? "")\($0.name), \(snapshot.displayName) local, \(localReadingText), \($0.detail)\(localActivityText)\(localLedgerText)"
-        } ?? "\(snapshot.displayName), \(readingText)"
+        } ?? (snapshot.isLocalModelGroup
+            ? "\(snapshot.displayName) local, \(localReadingText), \(snapshot.localModelCells.compactMap(\.localModel?.name).joined(separator: ", "))\(localActivityText)"
+            : "\(snapshot.displayName), \(readingText)")
     }
 
     /// What the model is doing, the way the tooltip's header says it.
@@ -520,7 +522,7 @@ struct ProviderReading: View {
     /// Only after a percentage: a count or a cost with a percentage after it
     /// would read as one quantity, and it is not.
     private var weeklyReading: Double? {
-        guard showsWeeklyReading, weeklyRing != .off, snapshot.localModel == nil,
+        guard showsWeeklyReading, weeklyRing != .off, !snapshot.isLocalCell,
               snapshot.usedFraction != nil, snapshot.headline?.prefersUsedText != true
         else { return nil }
         return snapshot.weeklyFraction
@@ -561,9 +563,9 @@ struct ProviderReading: View {
             // Keep local speeds inside the ring's column so longer units
             // cannot consume the notch's existing side margins.
             .lineLimit(1)
-            .minimumScaleFactor(snapshot.localModel == nil ? 1 : 0.5)
-            .fixedSize(horizontal: snapshot.localModel == nil, vertical: false)
-            .frame(width: snapshot.localModel == nil ? nil : NotchLayout.ringDiameter,
+            .minimumScaleFactor(snapshot.isLocalCell ? 0.5 : 1)
+            .fixedSize(horizontal: !snapshot.isLocalCell, vertical: false)
+            .frame(width: snapshot.isLocalCell ? NotchLayout.ringDiameter : nil,
                    height: NotchLayout.percentLineHeight)
             .contentTransition(.numericText())
             .animation(NotchMotion.reading, value: text)

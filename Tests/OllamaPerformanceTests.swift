@@ -94,25 +94,25 @@ final class OllamaPerformanceViewTests: XCTestCase {
         let runtime = try runtime(names: ["qwen3:latest", "gemma4:e4b"])
         let cloud = Fixtures.snapshots()[0]
         vm.updateSnapshots([cloud, runtime])
-        vm.hoveredIndex = 2
+        vm.hoveredIndex = 1
         let hoveredID = vm.hoveredSnapshot?.id
         vm.updatePerformances(relay.performances)
         XCTAssertEqual(vm.hoveredSnapshot?.id, hoveredID)
-        XCTAssertEqual(vm.snapshots.first { $0.localModel?.name == "qwen3:latest" }?.localPerformance, new)
-        XCTAssertNil(vm.snapshots.first { $0.localModel?.name == "gemma4:e4b" }?.localPerformance)
+        XCTAssertEqual(vm.snapshots.flatMap(\.modelCells).first { $0.localModel?.name == "qwen3:latest" }?.localPerformance, new)
+        XCTAssertNil(vm.snapshots.flatMap(\.modelCells).first { $0.localModel?.name == "gemma4:e4b" }?.localPerformance)
         XCTAssertEqual(vm.snapshots[0], cloud)
         vm.updateSnapshots([cloud, runtime])
-        XCTAssertEqual(vm.snapshots.last?.localPerformance, new)
+        XCTAssertEqual(vm.snapshots.last?.localModelCells.last?.localPerformance, new, "gemma4:e4b, then qwen3:latest")
         relay.configure(enabled: false, endpoint: OllamaEndpoint.defaultAddress)
         vm.updatePerformances(relay.performances)
-        XCTAssertTrue(vm.snapshots.allSatisfy { $0.localPerformance == nil })
+        XCTAssertTrue(vm.snapshots.flatMap(\.modelCells).allSatisfy { $0.localPerformance == nil })
         XCTAssertEqual(vm.snapshots.last?.headlineText, "0", "Never a dash: no tokens logged is 0")
     }
 
     func testDisabledCaptureShowsMemoryAndClearsPreviousResponse() throws {
         let vm = NotchViewModel()
         vm.updateSnapshots([try runtime(names: ["qwen3:latest"])])
-        let cell = try XCTUnwrap(vm.snapshots.first)
+        let cell = try XCTUnwrap(vm.snapshots.first?.localModelCells.first)
         XCTAssertEqual(cell.headlineText, "0")
         XCTAssertEqual(cell.localModel?.memoryText, expectedGigabytes(4.5))
         XCTAssertFalse(cell.showsLocalPerformance)
@@ -122,13 +122,13 @@ final class OllamaPerformanceViewTests: XCTestCase {
         XCTAssertEqual(measurement.fidelity, .derived)
         vm.updatePerformances(["qwen3:latest": measurement])
         vm.thinkingModels = ["qwen3:latest": Date()]
-        XCTAssertEqual(vm.snapshots[0].localPerformance?.headlineText, "30 tok/s", "Speed stays as the secondary detail")
+        XCTAssertEqual(vm.snapshots[0].localModelCells[0].localPerformance?.headlineText, "30 tok/s", "Speed stays as the secondary detail")
         XCTAssertEqual(vm.snapshots[0].headlineText, "0", "A speed reading is not a token record")
-        XCTAssertNotNil(vm.activity(for: vm.snapshots[0]))
+        XCTAssertNotNil(vm.activity(for: vm.snapshots[0].localModelCells[0]))
         vm.setLocalMetricsEnabled(false)
         XCTAssertEqual(vm.snapshots[0].headlineText, "0")
-        XCTAssertNil(vm.snapshots[0].localPerformance)
-        XCTAssertNil(vm.activity(for: vm.snapshots[0]))
+        XCTAssertNil(vm.snapshots[0].localModelCells[0].localPerformance)
+        XCTAssertNil(vm.activity(for: vm.snapshots[0].localModelCells[0]))
         vm.setLocalMetricsEnabled(true)
         XCTAssertEqual(vm.snapshots[0].headlineText, "0")
     }
@@ -192,7 +192,7 @@ final class OllamaPerformanceViewTests: XCTestCase {
                 let renderer = ImageRenderer(content: NotchRootView(model: vm).frame(width: size.width, height: size.height))
                 renderer.scale = 2
                 try save(XCTUnwrap(renderer.nsImage), name: "speed-notch-\(edge.rawValue)-\(notchSize.rawValue).png")
-                for cell in vm.snapshots.dropFirst() {
+                for cell in vm.snapshots.dropFirst().flatMap(\.modelCells) {
                     let height = NotchLayout.cardHeight(windowCount: 0, localModelName: cell.localModel?.name, showsLocalPerformance: cell.showsLocalPerformance)
                     XCTAssertLessThanOrEqual(height, vm.maxCardHeight(cellCount: vm.snapshots.count))
                     let card = ImageRenderer(content: TooltipCard(snapshot: cell, activity: vm.activity(for: cell),
