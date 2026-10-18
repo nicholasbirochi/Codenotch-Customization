@@ -684,14 +684,10 @@ private struct LocalModelGroupDetails: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(models.enumerated()), id: \.element.id) { index, cell in
-                if index > 0 {
-                    Rectangle()
-                        .fill(Palette.ringTrack)
-                        .frame(height: NotchLayout.hairline)
-                        .padding(.vertical, NotchLayout.blockSpacing)
-                }
+                // No rule between models: the chart's baseline and its dates
+                // already close each block, as on the other usage cards.
                 LocalModelBlock(cell: cell, now: now)
-                    .padding(.top, index == 0 ? NotchLayout.headerToBlock : 0)
+                    .padding(.top, index == 0 ? NotchLayout.headerToBlock : NotchLayout.blockSpacing)
             }
         }
         .font(Typography.cardBody)
@@ -730,6 +726,12 @@ private struct LocalModelBlock: View {
             .frame(height: NotchLayout.cardBodyLineHeight)
     }
 
+    /// The first and last bar's date under the chart, like the other cards.
+    private func stamp(_ date: Date?, hourly: Bool) -> String {
+        guard let date else { return "—" }
+        return date.formatted(hourly ? .dateTime.hour(.twoDigits(amPM: .omitted)) : .dateTime.day().month())
+    }
+
     var body: some View {
         let name = cell.localModel?.name ?? cell.displayName
         let split = cell.periodTokenSplit(period) ?? (0, 0)
@@ -762,6 +764,9 @@ private struct LocalModelBlock: View {
                 .padding(.top, NotchLayout.codexChartTop)
                 .accessibilityLabel(L10n.t("Observed token history"))
                 .accessibilityValue(LimitWindow.compact(slice.total))
+            SplitRow(leading: stamp(slice.buckets.first?.at, hourly: slice.hourly),
+                     trailing: stamp(slice.buckets.last?.at, hourly: slice.hourly))
+                .frame(height: NotchLayout.cardBodyLineHeight)
         }
     }
 }

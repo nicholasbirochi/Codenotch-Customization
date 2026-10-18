@@ -426,13 +426,13 @@ enum NotchLayout {
 
         if !localModelGroupNames.isEmpty {
             // Match LocalModelBlock: per model the mark-and-name line and the
-            // calls/input/output rows, a rule, the period picker and its chart,
-            // with a rule and its gaps between models.
+            // calls/input/output rows, a rule, the period picker, its chart and
+            // the dates under it, with a plain gap between models.
             let block = 4 * cardBodyLineHeight + 3 * sessionRowGap
                 + hairline + 2 * codexUsageRowGap
-                + cardBodyLineHeight + codexChartTop + localModelChartHeight
+                + cardBodyLineHeight + codexChartTop + localModelChartHeight + cardBodyLineHeight
             height += headerToBlock + CGFloat(localModelGroupNames.count) * block
-                + CGFloat(localModelGroupNames.count - 1) * (hairline + 2 * blockSpacing)
+                + CGFloat(localModelGroupNames.count - 1) * blockSpacing
         } else if let localModelName {
             // Match RuntimeModelDetails so the panel and hover region fit all
             // rows: the runtime's own, the speed pair, and a logged runtime's
