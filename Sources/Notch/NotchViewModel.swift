@@ -77,9 +77,14 @@ final class NotchViewModel: ObservableObject {
             snapshot.localPerformance = LocalModelPerformance(outputTokens: output,
                 tokensPerSecond: speed, measuredAt: last.at)
         }
-        snapshot.observedHistory = ledger?.history(for: snapshot.id, now: now) ?? .unsupported
-        let historySource: ObservedUsageHistory.Source = snapshot.providerID == Self.ollamaSource ? .relay : .runtimeLog
-        snapshot.observedHistory?.source = historySource
+        let isOllama = snapshot.providerID == Self.ollamaSource
+        // With the relay on, a model it has not served yet starts from an
+        // empty chart rather than "unsupported", and fills as responses pass.
+        snapshot.observedHistory = ledger?.history(for: snapshot.id, now: now)
+            ?? (isOllama && localMetricsEnabled ? .aggregate([], now: now) : .unsupported)
+        if snapshot.observedHistory?.unavailable == false {
+            snapshot.observedHistory?.source = isOllama ? .relay : .runtimeLog
+        }
         snapshot.localContextFraction = snapshot.localLedger?.contextFraction(contextLength: model.contextLength)
         return snapshot
     }

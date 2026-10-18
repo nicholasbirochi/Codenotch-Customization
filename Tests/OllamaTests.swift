@@ -332,7 +332,7 @@ final class LocalModelBrandTests: XCTestCase {
         let runtime = ollamaSnapshot(try OllamaLocalUsage.parse(data))
         let cell = try XCTUnwrap(runtime.notchSnapshots.first)
         XCTAssertEqual(runtime.glyph, .ollamaLocal)
-        XCTAssertEqual(cell.glyph, .deepseek)
+        XCTAssertEqual(cell.glyph, .ollamaLocal)
         XCTAssertEqual(cell.localModel?.brand, .deepseek)
         XCTAssertEqual(cell.providerID, "ollama-local")
         XCTAssertEqual(cell.id, "ollama-local:model:deepseek-r1:1.5b")
@@ -390,18 +390,23 @@ final class OllamaLocalProviderTests: XCTestCase {
         XCTAssertNil(provider.account())
     }
 
-    func testLoadedModelsSkipTheInstalledListing() async throws {
+    func testLoadedModelsComeFirstAndAreNotListedTwice() async throws {
         var paths: [String] = []
+        let tags = #"{"models":[{"name":"qwen3:8b","size":4000},{"name":"llama3","size":3000},{"name":"gemma3:4b","size":2000}]}"#
         let provider = makeProvider { request in
             paths.append(request.url?.path ?? "")
-            return (200, Data(#"{"models":[{"name":"qwen3:8b","size":5000,"size_vram":5000}]}"#.utf8))
+            return (200, Data((request.url?.path == "/api/tags" ? tags
+                : #"{"models":[{"name":"qwen3:8b","size":5000,"size_vram":5000},{"name":"llama3:latest","size":3000}]}"#).utf8))
         }
         let snapshot = try await provider.fetchSnapshot()
-        XCTAssertEqual(paths, ["/api/ps"])
-        XCTAssertEqual(snapshot.localRuntime?.models.map(\.loaded), [true])
+        XCTAssertEqual(paths, ["/api/ps", "/api/tags"])
+        XCTAssertEqual(snapshot.localRuntime?.models.map(\.name), ["llama3:latest", "qwen3:8b", "gemma3:4b"])
+        XCTAssertEqual(snapshot.localRuntime?.models.map(\.loaded), [true, true, false])
+        XCTAssertEqual(snapshot.localRuntime?.models.first { $0.name == "qwen3:8b" }?.memoryBytes, 5000)
+        XCTAssertEqual(snapshot.localRuntime?.summary, "2 models loaded")
     }
 
-    func testIdleServerShowsTheNewestInstalledModel() async throws {
+    func testIdleServerShowsEveryInstalledModel() async throws {
         let tags = #"""
         {"models":[
           {"name":"qwen2.5-coder:7b","size":4683087561,"modified_at":"2026-09-01T10:00:00Z",
@@ -414,8 +419,10 @@ final class OllamaLocalProviderTests: XCTestCase {
             (200, Data((request.url?.path == "/api/tags" ? tags : #"{"models":[]}"#).utf8))
         }
         let snapshot = try await provider.fetchSnapshot()
-        let model = try XCTUnwrap(snapshot.localRuntime?.models.first)
-        XCTAssertEqual(snapshot.localRuntime?.models.count, 1)
+        XCTAssertEqual(snapshot.localRuntime?.models.map(\.name), ["qwen2.5-coder:7b", "qwen3-coder:30b"])
+        XCTAssertEqual(snapshot.localRuntime?.models.map(\.loaded), [false, false])
+        XCTAssertEqual(snapshot.localRuntime?.summary, "Server reachable · No models loaded")
+        let model = try XCTUnwrap(snapshot.localRuntime?.models.last)
         XCTAssertEqual(model.name, "qwen3-coder:30b")
         XCTAssertFalse(model.loaded)
         XCTAssertEqual(model.memoryKind, .modelSize)
@@ -423,7 +430,8 @@ final class OllamaLocalProviderTests: XCTestCase {
         XCTAssertEqual(model.memoryBytes, 18556700761)
         XCTAssertEqual(model.contextLength, 262144)
         XCTAssertEqual(model.quantizationLevel, "Q4_K_M")
-        XCTAssertEqual(snapshot.notchSnapshots.count, 1)
+        XCTAssertEqual(snapshot.notchSnapshots.count, 2)
+        XCTAssertEqual(snapshot.notchSnapshots.map(\.glyph), [.ollamaLocal, .ollamaLocal])
     }
 
     func testUnreadableInstalledListingKeepsTheIdleSummary() async throws {
@@ -942,7 +950,7 @@ final class OllamaRenderTests: XCTestCase {
            let expectedBrand = ProcessInfo.processInfo.environment["CODENOTCH_OLLAMA_EXPECTED_BRAND"] {
             let cell = try XCTUnwrap(snapshot.notchSnapshots.first { $0.localModel?.name == expectedName })
             XCTAssertEqual(cell.localModel?.brand?.rawValue ?? "ollama", expectedBrand)
-            XCTAssertEqual(cell.glyph, cell.localModel?.brand?.glyph ?? .ollamaLocal)
+            XCTAssertEqual(cell.glyph, .ollamaLocal)
             XCTAssertEqual(cell.providerID, "ollama-local")
         }
         for (index, cell) in snapshot.notchSnapshots.enumerated() {

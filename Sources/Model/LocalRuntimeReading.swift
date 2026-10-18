@@ -97,8 +97,10 @@ struct LocalRuntimeReading: Equatable {
         self.measuresSpeed = measuresSpeed
     }
 
+    /// Installed models listed while idle are not counted as loaded.
     var summary: String {
-        models.isEmpty ? "Server reachable · No models loaded"
-            : "\(models.count) \(models.count == 1 ? "model" : "models") loaded"
+        let loaded = models.filter(\.loaded).count
+        return loaded == 0 ? "Server reachable · No models loaded"
+            : "\(loaded) \(loaded == 1 ? "model" : "models") loaded"
     }
 }

@@ -323,8 +323,10 @@ struct ProviderSnapshot: Identifiable, Equatable {
     var notchSnapshots: [ProviderSnapshot] {
         guard kind == .localRuntime, localModel == nil else { return [self] }
         return (localRuntime?.models ?? []).map { model in
+            // Ollama keeps its own mark on every cell; the model's brand is
+            // still named in the tooltip. Other runtimes show the brand.
             ProviderSnapshot(id: "\(id):model:\(model.id)", displayName: displayName,
-                             glyph: model.brand?.glyph ?? glyph,
+                             glyph: glyph == .ollamaLocal ? glyph : model.brand?.glyph ?? glyph,
                              fidelity: fidelity, status: status, windows: [],
                              kind: kind, localModel: model,
                              localRuntimeMeasuresSpeed: localRuntime?.measuresSpeed ?? false,
