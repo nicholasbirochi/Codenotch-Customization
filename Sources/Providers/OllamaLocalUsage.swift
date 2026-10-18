@@ -41,6 +41,46 @@ enum OllamaLocalUsage {
         return LocalRuntimeReading(models: models)
     }
 
+    private struct TagsResponse: Decodable {
+        struct Model: Decodable {
+            struct Details: Decodable {
+                let quantization_level: String?
+                let context_length: Int?
+            }
+
+            let name: String
+            let size: Int64?
+            let modified_at: String?
+            let details: Details?
+        }
+        let models: [Model]
+    }
+
+    /// The installed model touched most recently, from `/api/tags`, shown as
+    /// not loaded so an idle server still has a cell to hover. Its byte count
+    /// is the size on disk, labelled as such. Nil when nothing is installed or
+    /// the listing cannot be read: the idle summary then stands as before.
+    static func parseInstalled(_ data: Data) -> LocalRuntimeReading.Model? {
+        guard let response = try? JSONDecoder().decode(TagsResponse.self, from: data) else { return nil }
+        let candidates = response.models.filter {
+            !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                && ($0.size.map { $0 >= 0 } ?? true)
+        }
+        let newest = candidates.max { lhs, rhs in
+            let l = lhs.modified_at.flatMap(parseISO8601) ?? .distantPast
+            let r = rhs.modified_at.flatMap(parseISO8601) ?? .distantPast
+            return l == r ? lhs.name > rhs.name : l < r
+        }
+        guard let model = newest else { return nil }
+        let quantization = model.details?.quantization_level?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return LocalRuntimeReading.Model(
+            name: model.name, memoryBytes: model.size,
+            contextLength: model.details?.context_length.flatMap { $0 > 0 ? $0 : nil },
+            quantizationLevel: quantization?.isEmpty == false ? quantization : nil,
+            memoryKind: .modelSize, loaded: false)
+    }
+
     static func parseISO8601(_ string: String) -> Date? {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
