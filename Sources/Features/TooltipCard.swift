@@ -581,21 +581,6 @@ private struct ProviderTooltip: View {
     let resetTimeFormat: ResetTimeFormat
     let showUsagePace: Bool
     @Environment(\.tooltipSecondaryInk) private var secondaryInk
-    @AppStorage private var periodRaw: String
-
-    init(activityNote: String?, snapshot: ProviderSnapshot, now: Date,
-         resetTimeFormat: ResetTimeFormat, showUsagePace: Bool) {
-        self.activityNote = activityNote
-        self.snapshot = snapshot
-        self.now = now
-        self.resetTimeFormat = resetTimeFormat
-        self.showUsagePace = showUsagePace
-        _periodRaw = AppStorage(wrappedValue: UsageHistoryPeriod.month.rawValue,
-                                UsageHistoryPeriod.preferenceKey(snapshot.id))
-    }
-
-    /// The period the card's sum is for, so each model's pair adds up to it.
-    private var groupPeriod: UsageHistoryPeriod { UsageHistoryPeriod(rawValue: periodRaw) ?? .month }
 
     /// Only worth saying when the numbers are not current. A remembered reading
     /// has to be dated, or it quietly passes itself off as live.
@@ -630,7 +615,7 @@ private struct ProviderTooltip: View {
                           ? L10n.t("\(snapshot.localModel?.brand?.displayName ?? snapshot.displayName) · Local")
                           : L10n.t("\(snapshot.displayName) Usage"),
                           subtitle: snapshot.plan,
-                          note: activityNote ?? (snapshot.isLocalModelGroup ? groupPeriod.title
+                          note: activityNote ?? (snapshot.isLocalModelGroup ? nil
                                 : snapshot.localModel?.brand != nil ? snapshot.displayName : readingAge)) {
                 ProviderGlyphView(glyph: snapshot.glyph, customIconFilename: snapshot.customIconFilename)
                     .foregroundStyle(Palette.textPrimary)
@@ -648,7 +633,7 @@ private struct ProviderTooltip: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.top, NotchLayout.headerToBlock)
             } else if snapshot.isLocalModelGroup {
-                LocalModelGroupDetails(models: snapshot.localModelCells, period: groupPeriod)
+                LocalModelGroupDetails(models: snapshot.localModelCells, now: now)
             } else if let localModel = snapshot.localModel {
                 RuntimeModelDetails(model: localModel, performance: snapshot.localPerformance,
                                     showsPerformance: snapshot.showsLocalPerformance,
@@ -691,12 +676,10 @@ private struct ProviderTooltip: View {
     }
 }
 
-/// One block per model, smallest first, split by a rule: the runtime's mark,
-/// the model's name, and what went in and came out over the card's period.
-/// No speed here — the card is about volume, and an unrecorded model reads 0.
+/// One block per model, smallest first, split by a rule.
 private struct LocalModelGroupDetails: View {
     let models: [ProviderSnapshot]
-    let period: UsageHistoryPeriod
+    let now: Date
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -707,34 +690,100 @@ private struct LocalModelGroupDetails: View {
                         .frame(height: NotchLayout.hairline)
                         .padding(.vertical, NotchLayout.blockSpacing)
                 }
-                block(cell)
+                LocalModelBlock(cell: cell, now: now)
                     .padding(.top, index == 0 ? NotchLayout.headerToBlock : 0)
             }
         }
         .font(Typography.cardBody)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
+}
 
-    private func block(_ cell: ProviderSnapshot) -> some View {
+/// The runtime's mark beside the model's name; its calls, input and output
+/// over the period picked under the rule; and that period's tokens as bars.
+/// Each model keeps its own period. No speed here — the card is about volume,
+/// and an unrecorded model reads 0.
+private struct LocalModelBlock: View {
+    let cell: ProviderSnapshot
+    let now: Date
+    @AppStorage private var periodRaw: String
+
+    init(cell: ProviderSnapshot, now: Date) {
+        self.cell = cell
+        self.now = now
+        _periodRaw = AppStorage(wrappedValue: UsageHistoryPeriod.month.rawValue,
+                                UsageHistoryPeriod.preferenceKey(cell.id))
+    }
+
+    private var period: UsageHistoryPeriod { UsageHistoryPeriod(rawValue: periodRaw) ?? .month }
+
+    /// Nothing logged still draws the period's empty bars, not a made-up shape.
+    private var slice: ObservedUsageHistory.Slice {
+        let history = cell.observedHistory.flatMap { $0.unavailable ? nil : $0 }
+            ?? ObservedUsageHistory.aggregate([], now: now)
+        return history.slice(period)
+    }
+
+    /// English in every language, as asked: Calls, Input, Output.
+    private func row(_ name: String, _ value: Int) -> some View {
+        SplitRow(leading: name, trailing: LimitWindow.compact(value))
+            .frame(height: NotchLayout.cardBodyLineHeight)
+    }
+
+    var body: some View {
         let name = cell.localModel?.name ?? cell.displayName
         let split = cell.periodTokenSplit(period) ?? (0, 0)
-        return VStack(alignment: .leading, spacing: NotchLayout.sessionRowGap) {
-            HStack(spacing: Design.px(10)) {
-                ProviderGlyphView(glyph: cell.glyph, customIconFilename: cell.customIconFilename,
-                                  size: NotchLayout.cardBodyLineHeight)
-                    .foregroundStyle(Palette.textPrimary)
-                Text(L10n.t("Local")).foregroundStyle(Palette.textPrimary)
+        let slice = slice
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: NotchLayout.sessionRowGap) {
+                HStack(spacing: Design.px(10)) {
+                    ProviderGlyphView(glyph: cell.glyph, customIconFilename: cell.customIconFilename,
+                                      size: NotchLayout.cardBodyLineHeight)
+                        .foregroundStyle(Palette.textPrimary)
+                    Text(name)
+                        .foregroundStyle(Palette.textPrimary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .accessibilityLabel(name)
+                }
+                .frame(height: NotchLayout.cardBodyLineHeight)
+                row("Calls", cell.periodCalls(period) ?? 0)
+                row("Input", split.input)
+                row("Output", split.output)
             }
-            .frame(height: NotchLayout.cardBodyLineHeight)
-            Text(name)
-                .foregroundStyle(Palette.textPrimary)
-                .lineLimit(2)
-                .truncationMode(.middle)
-                .frame(height: NotchLayout.modelNameHeight(name), alignment: .topLeading)
-                .accessibilityLabel(name)
-            SplitRow(leading: L10n.t("Input"), trailing: LimitWindow.compact(split.input))
-            SplitRow(leading: L10n.t("Output"), trailing: LimitWindow.compact(split.output))
+            Rectangle()
+                .fill(Palette.ringTrack)
+                .frame(height: NotchLayout.hairline)
+                .padding(.vertical, NotchLayout.codexUsageRowGap)
+            UsagePeriodPicker(period: period) { periodRaw = $0.rawValue }
+            CodexDailyUsageChart(
+                buckets: slice.buckets.map { .init(startDate: String($0.at.timeIntervalSince1970), tokens: $0.tokens) },
+                maximum: max(1, slice.peak), height: NotchLayout.localModelChartHeight)
+                .padding(.top, NotchLayout.codexChartTop)
+                .accessibilityLabel(L10n.t("Observed token history"))
+                .accessibilityValue(LimitWindow.compact(slice.total))
         }
+    }
+}
+
+/// Today, Week, Month — the picker every usage chart sits under.
+struct UsagePeriodPicker: View {
+    let period: UsageHistoryPeriod
+    let select: (UsageHistoryPeriod) -> Void
+    @Environment(\.tooltipSecondaryInk) private var secondaryInk
+
+    var body: some View {
+        HStack(spacing: Design.px(18)) {
+            ForEach(UsageHistoryPeriod.allCases) { option in
+                Button { select(option) } label: {
+                    Text(option.title)
+                        .font(option == period ? Typography.cardBody.weight(.semibold) : Typography.cardBody)
+                        .foregroundStyle(option == period ? Palette.textPrimary : secondaryInk)
+                }.buttonStyle(.plain)
+                    .accessibilityAddTraits(option == period ? .isSelected : [])
+            }
+            Spacer(minLength: 0)
+        }.frame(height: NotchLayout.cardBodyLineHeight)
     }
 }
 
@@ -900,6 +949,7 @@ struct DailyTokenUsageChart: View {
 struct CodexDailyUsageChart: View {
     let buckets: [CodexTokenUsage.DailyBucket]
     let maximum: Int
+    var height: CGFloat = NotchLayout.codexChartHeight
     @Environment(\.tooltipSecondaryInk) private var secondaryInk
 
     var body: some View {
@@ -921,7 +971,7 @@ struct CodexDailyUsageChart: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
             }
         }
-        .frame(height: NotchLayout.codexChartHeight)
+        .frame(height: height)
         .clipped()
     }
 }

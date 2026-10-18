@@ -223,6 +223,8 @@ enum NotchLayout {
     static let codexUsageRowGap = Design.px(12)
     static let codexChartTop   = Design.px(15)
     static let codexChartHeight = Design.px(115)
+    /// Shorter: an Ollama card stacks one of these per model.
+    static let localModelChartHeight = Design.px(70)
     static func observedUsageHeight(_ history: ObservedUsageHistory) -> CGFloat {
         let divider = hairline + 2 * codexUsageRowGap
         if history.unavailable { return 2 * divider + 5 * cardBodyLineHeight }
@@ -423,12 +425,13 @@ enum NotchLayout {
         }
 
         if !localModelGroupNames.isEmpty {
-            // Match LocalModelGroupDetails: per model a mark line, the name and
-            // the input/output pair, with a rule and its gaps between models.
-            let blocks = localModelGroupNames.reduce(CGFloat(0)) { sum, name in
-                sum + 3 * cardBodyLineHeight + modelNameHeight(name) + 3 * sessionRowGap
-            }
-            height += headerToBlock + blocks
+            // Match LocalModelBlock: per model the mark-and-name line and the
+            // calls/input/output rows, a rule, the period picker and its chart,
+            // with a rule and its gaps between models.
+            let block = 4 * cardBodyLineHeight + 3 * sessionRowGap
+                + hairline + 2 * codexUsageRowGap
+                + cardBodyLineHeight + codexChartTop + localModelChartHeight
+            height += headerToBlock + CGFloat(localModelGroupNames.count) * block
                 + CGFloat(localModelGroupNames.count - 1) * (hairline + 2 * blockSpacing)
         } else if let localModelName {
             // Match RuntimeModelDetails so the panel and hover region fit all

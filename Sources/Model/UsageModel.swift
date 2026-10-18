@@ -478,6 +478,13 @@ struct ProviderSnapshot: Identifiable, Equatable {
         return (slice.input ?? 0, slice.output ?? 0)
     }
 
+    /// Requests the relay logged in `period` for one model. Nothing logged is 0.
+    func periodCalls(_ period: UsageHistoryPeriod) -> Int? {
+        guard localModel != nil, providerID == "ollama-local" else { return nil }
+        guard let observedHistory, !observedHistory.unavailable else { return 0 }
+        return observedHistory.slice(period).requests ?? 0
+    }
+
     /// The same figure with its unit and period, for the menu and VoiceOver,
     /// where a bare number under no ring says nothing.
     func periodTokensText(_ period: UsageHistoryPeriod) -> String? {
