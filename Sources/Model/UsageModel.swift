@@ -438,9 +438,47 @@ struct ProviderSnapshot: Identifiable, Equatable {
     /// without a denominator — the same rule the headline ring follows.
     var weeklyFraction: Double? { weeklyWindow?.usedFraction }
 
-    /// What the cell prints under the ring.
-    var headlineText: String {
+    /// What the cell prints under the ring, for the period the card's chart
+    /// was last set to.
+    var headlineText: String { headlineText(period: observedPeriod) }
+
+    /// An Ollama model counts what it spent rather than how fast it went: the
+    /// tokens the relay logged in `period`, prompt and response together — the
+    /// same figure as the chart's "Tokens in period". Nothing logged is 0, not
+    /// a dash: the relay is the record, and it has none.
+    func periodTokens(_ period: UsageHistoryPeriod) -> Int? {
+        guard localModel != nil, providerID == "ollama-local" else { return nil }
+        guard let observedHistory, !observedHistory.unavailable else { return 0 }
+        return observedHistory.slice(period).total
+    }
+
+    /// The same figure with its unit and period, for the menu and VoiceOver,
+    /// where a bare number under no ring says nothing.
+    func periodTokensText(_ period: UsageHistoryPeriod) -> String? {
+        guard let tokens = periodTokens(period) else { return nil }
+        let count = LimitWindow.compact(tokens)
+        switch period {
+        case .today: return L10n.t("\(count) tokens today")
+        case .week: return L10n.t("\(count) tokens this week")
+        case .month: return L10n.t("\(count) tokens this month")
+        }
+    }
+
+    /// The chart's period picker, shared with the reading under the ring.
+    var observedPeriod: UsageHistoryPeriod {
+        UserDefaults.standard.string(forKey: UsageHistoryPeriod.preferenceKey(id))
+            .flatMap(UsageHistoryPeriod.init(rawValue:)) ?? .month
+    }
+
+    /// Drawn in the quieter ink: a figure that has not been measured yet.
+    func headlineIsPending(period: UsageHistoryPeriod) -> Bool {
+        if let tokens = periodTokens(period) { return tokens == 0 }
+        return showsLocalPerformance && localPerformance == nil
+    }
+
+    func headlineText(period: UsageHistoryPeriod) -> String {
         if kind == .localRuntime {
+            if let tokens = periodTokens(period) { return LimitWindow.compact(tokens) }
             return showsLocalPerformance ? (localPerformance?.headlineText ?? "— tok/s")
                 : (localModel?.memoryText ?? "—")
         }

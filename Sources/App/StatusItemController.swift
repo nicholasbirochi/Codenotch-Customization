@@ -482,7 +482,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     /// in the order the eye wants them.
     static func modelLine(for cell: ProviderSnapshot, activity: ActivitySummary?) -> String {
         guard let model = cell.localModel else { return cell.headlineText }
-        var parts = [cell.headlineText]
+        var parts = [cell.periodTokensText(cell.observedPeriod) ?? cell.headlineText]
         if let activity, activity.state == .working {
             parts.append(activity.note ?? activity.sessions.first?.name ?? L10n.t("Thinking"))
         }

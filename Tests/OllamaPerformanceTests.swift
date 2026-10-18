@@ -106,14 +106,15 @@ final class OllamaPerformanceViewTests: XCTestCase {
         relay.configure(enabled: false, endpoint: OllamaEndpoint.defaultAddress)
         vm.updatePerformances(relay.performances)
         XCTAssertTrue(vm.snapshots.allSatisfy { $0.localPerformance == nil })
-        XCTAssertEqual(vm.snapshots.last?.headlineText, "— tok/s")
+        XCTAssertEqual(vm.snapshots.last?.headlineText, "0", "Never a dash: no tokens logged is 0")
     }
 
     func testDisabledCaptureShowsMemoryAndClearsPreviousResponse() throws {
         let vm = NotchViewModel()
         vm.updateSnapshots([try runtime(names: ["qwen3:latest"])])
         let cell = try XCTUnwrap(vm.snapshots.first)
-        XCTAssertEqual(cell.headlineText, expectedGigabytes(4.5))
+        XCTAssertEqual(cell.headlineText, "0")
+        XCTAssertEqual(cell.localModel?.memoryText, expectedGigabytes(4.5))
         XCTAssertFalse(cell.showsLocalPerformance)
         XCTAssertNil(vm.activity(for: cell), "Residency alone does not establish thinking")
         vm.setLocalMetricsEnabled(true)
@@ -121,14 +122,15 @@ final class OllamaPerformanceViewTests: XCTestCase {
         XCTAssertEqual(measurement.fidelity, .derived)
         vm.updatePerformances(["qwen3:latest": measurement])
         vm.thinkingModels = ["qwen3:latest": Date()]
-        XCTAssertEqual(vm.snapshots[0].headlineText, "30 tok/s")
+        XCTAssertEqual(vm.snapshots[0].localPerformance?.headlineText, "30 tok/s", "Speed stays as the secondary detail")
+        XCTAssertEqual(vm.snapshots[0].headlineText, "0", "A speed reading is not a token record")
         XCTAssertNotNil(vm.activity(for: vm.snapshots[0]))
         vm.setLocalMetricsEnabled(false)
-        XCTAssertEqual(vm.snapshots[0].headlineText, expectedGigabytes(4.5))
+        XCTAssertEqual(vm.snapshots[0].headlineText, "0")
         XCTAssertNil(vm.snapshots[0].localPerformance)
         XCTAssertNil(vm.activity(for: vm.snapshots[0]))
         vm.setLocalMetricsEnabled(true)
-        XCTAssertEqual(vm.snapshots[0].headlineText, "— tok/s")
+        XCTAssertEqual(vm.snapshots[0].headlineText, "0")
     }
 
     func testSpeedLabelsFitTheExistingCellAndColorHasTextMeaning() throws {

@@ -27,7 +27,7 @@ final class LMStudioViewTests: XCTestCase {
         let vm = NotchViewModel()
         vm.updateSnapshots([try ollama(["qwen3:latest"]), try runtime()])
         XCTAssertEqual(vm.snapshots.map(\.showsLocalPerformance), [false, true, true])
-        XCTAssertEqual(vm.snapshots[0].headlineText, expectedGigabytes(4.5))
+        XCTAssertEqual(vm.snapshots[0].headlineText, "0", "Ollama counts its logged tokens; none logged is 0")
         XCTAssertEqual(vm.snapshots[1].headlineText, "— tok/s", "measured by the runtime, nothing measured yet")
 
         let speed = try XCTUnwrap(LocalModelPerformance(outputTokens: 300, tokensPerSecond: 17.9))
