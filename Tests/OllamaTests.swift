@@ -368,8 +368,10 @@ final class LocalModelBrandTests: XCTestCase {
 final class OllamaLocalProviderTests: XCTestCase {
     func testTransportUsesOnlyTheReadOnlyListing() async throws {
         let requested = expectation(description: "listing")
+        requested.expectedFulfillmentCount = 2
+        var paths: [String] = []
         let provider = makeProvider { request in
-            XCTAssertEqual(request.url?.path, "/api/ps")
+            paths.append(request.url?.path ?? "")
             XCTAssertEqual(request.httpMethod, "GET")
             XCTAssertNil(request.httpBody)
             XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
@@ -380,10 +382,59 @@ final class OllamaLocalProviderTests: XCTestCase {
         }
         let snapshot = try await provider.fetchSnapshot()
         await fulfillment(of: [requested], timeout: 1)
+        XCTAssertEqual(paths, ["/api/ps", "/api/tags"])
         XCTAssertEqual(snapshot.kind, .localRuntime)
         XCTAssertEqual(snapshot.status, .ok)
         XCTAssertTrue(snapshot.hasReading)
+        XCTAssertEqual(snapshot.localRuntime?.models, [])
         XCTAssertNil(provider.account())
+    }
+
+    func testLoadedModelsSkipTheInstalledListing() async throws {
+        var paths: [String] = []
+        let provider = makeProvider { request in
+            paths.append(request.url?.path ?? "")
+            return (200, Data(#"{"models":[{"name":"qwen3:8b","size":5000,"size_vram":5000}]}"#.utf8))
+        }
+        let snapshot = try await provider.fetchSnapshot()
+        XCTAssertEqual(paths, ["/api/ps"])
+        XCTAssertEqual(snapshot.localRuntime?.models.map(\.loaded), [true])
+    }
+
+    func testIdleServerShowsTheNewestInstalledModel() async throws {
+        let tags = #"""
+        {"models":[
+          {"name":"qwen2.5-coder:7b","size":4683087561,"modified_at":"2026-09-01T10:00:00Z",
+           "details":{"quantization_level":"Q4_K_M","context_length":32768}},
+          {"name":"qwen3-coder:30b","size":18556700761,"modified_at":"2026-10-01T10:00:00.5-03:00",
+           "details":{"quantization_level":" Q4_K_M ","context_length":262144}}
+        ]}
+        """#
+        let provider = makeProvider { request in
+            (200, Data((request.url?.path == "/api/tags" ? tags : #"{"models":[]}"#).utf8))
+        }
+        let snapshot = try await provider.fetchSnapshot()
+        let model = try XCTUnwrap(snapshot.localRuntime?.models.first)
+        XCTAssertEqual(snapshot.localRuntime?.models.count, 1)
+        XCTAssertEqual(model.name, "qwen3-coder:30b")
+        XCTAssertFalse(model.loaded)
+        XCTAssertEqual(model.memoryKind, .modelSize)
+        XCTAssertEqual(model.memoryLabel, "Model size")
+        XCTAssertEqual(model.memoryBytes, 18556700761)
+        XCTAssertEqual(model.contextLength, 262144)
+        XCTAssertEqual(model.quantizationLevel, "Q4_K_M")
+        XCTAssertEqual(snapshot.notchSnapshots.count, 1)
+    }
+
+    func testUnreadableInstalledListingKeepsTheIdleSummary() async throws {
+        for (status, body) in [(500, "{}"), (200, "not json"), (200, #"{"models":[{"name":" "}]}"#)] {
+            let provider = makeProvider { request in
+                request.url?.path == "/api/tags" ? (status, Data(body.utf8)) : (200, Data(#"{"models":[]}"#.utf8))
+            }
+            let snapshot = try await provider.fetchSnapshot()
+            XCTAssertEqual(snapshot.localRuntime?.models, [], body)
+            XCTAssertEqual(snapshot.statusMessage, "Server reachable · No models loaded", body)
+        }
     }
 
     func testTransportAndHTTPFailuresStayVisible() async {
