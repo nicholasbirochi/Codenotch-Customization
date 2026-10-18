@@ -48,7 +48,9 @@ final class StatusItemLocalRuntimeTests: XCTestCase {
         XCTAssertTrue(titles.contains("qwen3.8-27b: \(cell.headlineText) · Prompt · 1 queued · Context 61% · Today 20k in · 1200 out"), joined)
         XCTAssertTrue(titles.contains("flash-next-test: — tok/s"), joined)
         XCTAssertTrue(titles.contains("Ollama — 1 model loaded"), joined)
-        XCTAssertTrue(titles.contains("gemma4:e4b: \(expectedGigabytes(4.5)) · Thinking"), joined)
+        let gemma = try XCTUnwrap(fleet.menuModel.snapshots.first { $0.localModel?.name == "gemma4:e4b" })
+        XCTAssertTrue(titles.contains("gemma4:e4b: \(try XCTUnwrap(gemma.periodTokensText(gemma.observedPeriod))) · Thinking"), joined)
+        XCTAssertTrue(titles.contains { $0.hasPrefix("gemma4:e4b: 0 tokens this ") || $0.hasPrefix("gemma4:e4b: 0 tokens today") }, joined)
         XCTAssertTrue(titles.contains { $0.hasPrefix("Claude — 73%") }, joined)
         // The runtime's row refreshes the runtime; a model's line is not a button.
         let header = try XCTUnwrap(menu.items.first { $0.title.hasPrefix("LM Studio") })

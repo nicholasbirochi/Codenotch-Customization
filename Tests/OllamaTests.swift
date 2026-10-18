@@ -107,8 +107,9 @@ final class OllamaModelCellTests: XCTestCase {
         XCTAssertEqual(model.snapshots.count, 3)
         XCTAssertEqual(model.snapshots[0], cloud)
         XCTAssertEqual(model.snapshots.dropFirst().map(\.providerID), ["ollama-local", "ollama-local"])
-        XCTAssertEqual(model.snapshots.dropFirst().map(\.headlineText),
+        XCTAssertEqual(model.snapshots.dropFirst().map(\.localModel?.memoryText),
                        [expectedGigabytes(4.5), expectedGigabytes(6)])
+        XCTAssertEqual(model.snapshots.dropFirst().map(\.headlineText), ["0", "0"], "Nothing logged, so no tokens spent")
         XCTAssertEqual(Set(model.snapshots.map(\.id)).count, 3)
         XCTAssertTrue(model.snapshots.dropFirst().allSatisfy { $0.ringFraction == nil })
         XCTAssertEqual(model.snapshots[1].localModel?.contextText, expectedTokens(2048))
@@ -290,7 +291,8 @@ final class OllamaModelCellTests: XCTestCase {
     func testUnknownAndSmallMemoryReadingsAreNotModelCountsOrZeroes() throws {
         let data = Data(#"{"models":[{"name":"a"},{"name":"b","size":536870912}]}"#.utf8)
         let cells = ollamaSnapshot(try OllamaLocalUsage.parse(data)).notchSnapshots
-        XCTAssertEqual(cells.map(\.headlineText), ["—", "512 MB"])
+        XCTAssertEqual(cells.map(\.localModel?.memoryText), ["—", "512 MB"])
+        XCTAssertEqual(cells.map(\.headlineText), ["0", "0"])
         XCTAssertTrue(cells[0].hasReading)
         XCTAssertTrue(cells[0].localModel?.detail.contains("Memory unavailable") == true)
     }

@@ -134,4 +134,51 @@ final class LocalObservedViewTests: XCTestCase {
         XCTAssertNotEqual(vm.snapshots.first { $0.id == cell.id }?.observedHistory?.unavailable, false,
                           "Without the relay there is nothing to chart")
     }
+
+    /// The cell under the ring counts what the relay logged in the chart's
+    /// period, prompt and response together, never a dash.
+    func testTheCellShowsTheTokensSpentInTheChartsPeriod() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        func day(_ month: Int, _ day: Int, _ hour: Int = 12) -> Date {
+            calendar.date(from: DateComponents(year: 2026, month: month, day: day, hour: hour))!
+        }
+        let now = day(10, 15) // a Thursday
+        let vm = NotchViewModel()
+        vm.now = now
+        vm.updateSnapshots([ProviderSnapshot(id: "ollama-local", displayName: "Ollama", glyph: .ollamaLocal,
+            fidelity: .official, status: .ok, windows: [], kind: .localRuntime,
+            localRuntime: .init(models: [.init(name: "qwen3:8b", memoryBytes: 1, contextLength: nil,
+                                               quantizationLevel: nil, memoryKind: .modelSize, loaded: true)]))])
+        let id = "ollama-local:model:qwen3:8b"
+        let key = UsageHistoryPeriod.preferenceKey(id)
+        let saved = UserDefaults.standard.object(forKey: key)
+        defer { UserDefaults.standard.set(saved, forKey: key) }
+        UserDefaults.standard.removeObject(forKey: key)
+
+        let empty = try XCTUnwrap(vm.snapshots.first { $0.id == id })
+        XCTAssertEqual(empty.headlineText, "0", "Nothing logged is 0, not a dash")
+        XCTAssertTrue(empty.headlineIsPending(period: .month))
+        XCTAssertEqual(empty.periodTokensText(.month), "0 tokens this month")
+
+        var ledger = LocalTokenLedger(calendar: calendar)
+        for (at, input, output) in [(day(10, 15, 9), 1_000, 200), (day(10, 12), 5_000, 500),
+                                    (day(10, 2), 40_000, 4_000), (day(9, 20), 90_000, 10_000)] {
+            ledger.record(.init(instance: "qwen3:8b", at: at, inputTokens: input, outputTokens: output), as: id)
+        }
+        vm.updateLedger(ledger, source: NotchViewModel.ollamaSource)
+        let cell = try XCTUnwrap(vm.snapshots.first { $0.id == id })
+        XCTAssertEqual(cell.periodTokens(.today), 1_200)
+        XCTAssertEqual(cell.periodTokens(.week), 6_700)
+        XCTAssertEqual(cell.periodTokens(.month), 50_700)
+        XCTAssertEqual(cell.headlineText(period: .today), LimitWindow.compact(1_200))
+        XCTAssertEqual(cell.headlineText, LimitWindow.compact(50_700), "The chart opens on the month")
+        XCTAssertFalse(cell.headlineIsPending(period: .month))
+        XCTAssertEqual(cell.periodTokens(.month), cell.observedHistory?.slice(.month).total,
+                       "The same figure as the chart's total")
+
+        UserDefaults.standard.set(UsageHistoryPeriod.week.rawValue, forKey: key)
+        XCTAssertEqual(cell.headlineText, LimitWindow.compact(6_700), "The chart's period picker drives the cell")
+        XCTAssertEqual(cell.periodTokensText(cell.observedPeriod), "\(LimitWindow.compact(6_700)) tokens this week")
+    }
 }
