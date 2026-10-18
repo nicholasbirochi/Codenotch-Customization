@@ -203,6 +203,7 @@ final class LocalObservedViewTests: XCTestCase {
         XCTAssertEqual(empty.localModelGroupNames, ["qwen2.5-coder:7b", "qwen2.5-coder:14b", "qwen3-coder:30b"])
         XCTAssertEqual(empty.periodTokens(.month), 0, "Nothing logged is 0")
         XCTAssertTrue(empty.localModelCells.allSatisfy { $0.periodTokenSplit(.month)! == (0, 0) })
+        XCTAssertEqual(empty.localModelCells.map { $0.periodCalls(.month) }, [0, 0, 0], "No calls logged is 0")
 
         var ledger = LocalTokenLedger(calendar: calendar)
         let seven = "ollama-local:model:qwen2.5-coder:7b"
@@ -213,6 +214,8 @@ final class LocalObservedViewTests: XCTestCase {
         XCTAssertEqual(group.periodTokens(.month), 45, "Input and output of every model, summed")
         XCTAssertEqual(group.localModelCells.map { $0.periodTokenSplit(.month)!.input }, [43, 0, 0])
         XCTAssertEqual(group.localModelCells.map { $0.periodTokenSplit(.month)!.output }, [2, 0, 0])
+        XCTAssertEqual(group.localModelCells.map { $0.periodCalls(.month) }, [1, 0, 0], "One logged request is one call")
+        XCTAssertEqual(group.localModelCells.map { $0.periodCalls(.today) }, [1, 0, 0])
 
         guard let directory = ProcessInfo.processInfo.environment["OLLAMA_RENDER_DIRECTORY"] else { return }
         vm.isExpanded = true

@@ -34,17 +34,7 @@ struct ObservedUsageSection: View {
     }
 
     private var periodPicker: some View {
-        HStack(spacing: Design.px(18)) {
-            ForEach(UsageHistoryPeriod.allCases) { option in
-                Button { periodRaw = option.rawValue } label: {
-                    Text(option.title)
-                        .font(option == period ? Typography.cardBody.weight(.semibold) : Typography.cardBody)
-                        .foregroundStyle(option == period ? Palette.textPrimary : secondaryInk)
-                }.buttonStyle(.plain)
-                    .accessibilityAddTraits(option == period ? .isSelected : [])
-            }
-            Spacer(minLength: 0)
-        }.frame(height: NotchLayout.cardBodyLineHeight)
+        UsagePeriodPicker(period: period) { periodRaw = $0.rawValue }
     }
 
     var body: some View {
