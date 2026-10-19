@@ -66,7 +66,8 @@ final class NotchViewModel: ObservableObject {
 
     /// Ollama's models share one card: three rings for one runtime crowded
     /// the notch for figures read now and then. The card sits where the
-    /// first model did; its hover panel lists them smallest first, a tie by name.
+    /// first model did; its hover panel lists them smallest first, a tie by the
+    /// family before the colon — `qwen2.5:7b` ahead of `qwen2.5-coder:7b` — then by name.
     static func groupingLocalModels(_ cells: [ProviderSnapshot],
                                     of providerID: String = ollamaSource) -> [ProviderSnapshot] {
         let isModel = { (cell: ProviderSnapshot) in cell.providerID == providerID && cell.localModel != nil }
@@ -80,7 +81,9 @@ final class NotchViewModel: ObservableObject {
             let leftName = lhs.localModel?.name ?? "", rightName = rhs.localModel?.name ?? ""
             let left = parameterBillions(leftName) ?? .infinity
             let right = parameterBillions(rightName) ?? .infinity
-            return left == right ? leftName.localizedStandardCompare(rightName) == .orderedAscending : left < right
+            guard left == right else { return left < right }
+            let family = leftName.prefix { $0 != ":" }.localizedStandardCompare(rightName.prefix { $0 != ":" })
+            return (family == .orderedSame ? leftName.localizedStandardCompare(rightName) : family) == .orderedAscending
         }
         var result = cells.filter { !isModel($0) }
         result.insert(group, at: index)

@@ -184,6 +184,18 @@ final class LocalObservedViewTests: XCTestCase {
     }
 
     @MainActor
+    func testTheBaseQwenComesBeforeTheCoderOfTheSameSize() {
+        let names = ["qwen3-coder:30b", "qwen2.5-coder:7b", "qwen2.5-coder:14b", "qwen2.5:7b"]
+        let vm = NotchViewModel()
+        vm.updateSnapshots([ProviderSnapshot(id: "ollama-local", displayName: "Ollama", glyph: .ollamaLocal,
+            fidelity: .official, status: .ok, windows: [], kind: .localRuntime,
+            localRuntime: .init(models: names.map { .init(name: $0, memoryBytes: 1, contextLength: nil,
+                quantizationLevel: nil, memoryKind: .modelSize, loaded: false) }))])
+        XCTAssertEqual(vm.snapshots[0].localModelGroupNames,
+                       ["qwen2.5:7b", "qwen2.5-coder:7b", "qwen2.5-coder:14b", "qwen3-coder:30b"])
+    }
+
+    @MainActor
     func testOneOllamaCardListsQwenSmallestFirstAndSumsOnlyWhatWasLogged() throws {
         XCTAssertEqual(NotchViewModel.parameterBillions("qwen2.5-coder:14b"), 14)
         XCTAssertEqual(NotchViewModel.parameterBillions("qwen3-coder:30b"), 30)
