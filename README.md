@@ -31,9 +31,17 @@ keeping the official app does not update this fork or merge upstream changes.
 Dev updates are built from this repository to preserve its customizations.
 
 Local OpenCode/NVIDIA and per-model runtime history uses recorded counts only,
-with Today/Week/Month views and explicit unknown project attribution. Copilot
-retains its quota categories; its current source does not provide a dated event
-history or projects. See [monitoring scope and validation](docs/dev-monitoring.md).
+with Today/Week/Month/Year views (Year is the calendar year in 12 monthly bars;
+runtime logs keep a year of daily totals and 60 days of hourly ones) and explicit
+unknown project attribution. Copilot retains its quota categories; its current
+source does not provide a dated event history or projects, so its card has no
+period picker. See [monitoring scope and validation](docs/dev-monitoring.md).
+The Claude and Codex cards draw their token chart for a Week (7 daily bars),
+Month (30 daily bars) or Year (12 monthly bars) picked on each card and
+remembered per card. Claude's year comes from Codenotch's own local index;
+Codex's covers only the days its server profile returns. Every period picker,
+including Today/Week/Month/Year in the cost section, shows its labels in English
+on one row whatever the app language.
 Codenotch observes usage; it does not route tasks between AI models.
 
 ## Download
@@ -301,6 +309,11 @@ a menu item, **Keep open**, ticked while the notch is being held open, which is
 the surer way to release one that was kept open by accident. The item is
 greyed out when Settings says Always show, because that choice is Settings' to
 change.
+
+The × at the end of a card's header closes it: the notch folds at once, is no
+longer kept open, and stays folded until the pointer has moved off it, so the
+hover that is still there does not open it again. Clicking the pill brings it
+back straight away.
 
 In Settings → Appearance → Reset time, choose **Time remaining** for countdowns
 like "Resets in 3 Days 3h". **Reset date** keeps the reset date and time, with

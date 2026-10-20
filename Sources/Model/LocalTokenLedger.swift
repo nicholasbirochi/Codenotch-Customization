@@ -136,9 +136,11 @@ struct LocalTokenLedger: Equatable, Codable {
     private(set) var last: [String: LocalPrediction] = [:]
     private(set) var hours: [String: [Date: Totals]] = [:]
 
-    /// Long enough for a month's view later; old days are dropped as new ones
-    /// arrive, so a year of logs does not stay resident for a reading about today.
-    static let retentionDays = 60
+    /// Daily totals cover the Year view (a calendar year is at most 366
+    /// days back); hourly ones only the shorter periods, so a year of
+    /// hour cells does not stay resident for a reading about today.
+    static let retentionDays = 366
+    static let hourRetentionDays = 60
 
     var isEmpty: Bool { days.isEmpty }
     var instances: [String] { Array(days.keys).sorted() }
@@ -164,6 +166,10 @@ struct LocalTokenLedger: Equatable, Codable {
         if let cutoff = calendar.date(byAdding: .day, value: -Self.retentionDays, to: newest) {
             for instance in days.keys {
                 days[instance]?.keys.filter { $0 < cutoff }.forEach { days[instance]?.removeValue(forKey: $0) }
+            }
+        }
+        if let cutoff = calendar.date(byAdding: .day, value: -Self.hourRetentionDays, to: newest) {
+            for instance in hours.keys {
                 hours[instance]?.keys.filter { $0 < cutoff }.forEach { hours[instance]?.removeValue(forKey: $0) }
             }
         }
@@ -172,7 +178,10 @@ struct LocalTokenLedger: Equatable, Codable {
     func history(for instance: String, now: Date) -> ObservedUsageHistory? {
         guard days[instance] != nil else { return nil }
         let detailed = hours[instance]
-        let buckets = detailed ?? days[instance] ?? [:]
+        // Hours where they are kept, whole days before that (the Year view).
+        let coveredDays = Set((detailed ?? [:]).keys.map { calendar.startOfDay(for: $0) })
+        let olderDays = (days[instance] ?? [:]).filter { !coveredDays.contains($0.key) }
+        let buckets = (detailed ?? [:]).merging(olderDays) { hour, _ in hour }
         let records = buckets.map { at, totals in
             ObservedUsageHistory.Record(at: at, tokens: totals.totalTokens, requests: totals.requests,
                 input: totals.inputSamples == totals.requests ? totals.inputTokens : nil,

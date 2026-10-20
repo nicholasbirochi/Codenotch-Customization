@@ -289,6 +289,7 @@ private struct TooltipHeader<Mark: View>: View {
     var note: String?
     @ViewBuilder let mark: Mark
     @Environment(\.tooltipSecondaryInk) private var secondaryInk
+    @Environment(\.tooltipClose) private var close
 
     var body: some View {
         HStack(alignment: .center, spacing: NotchLayout.headerGap) {
@@ -314,6 +315,20 @@ private struct TooltipHeader<Mark: View>: View {
                         .foregroundStyle(secondaryInk)
                         .lineLimit(1)
                 }
+            }
+            if let close {
+                // At the end of the header's own line, so it covers nothing,
+                // and drawn like the × on the reset card.
+                Spacer(minLength: 0)
+                Button(action: close) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(secondaryInk)
+                        .frame(width: 16, height: 16)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(L10n.t("Close"))
             }
         }
     }
@@ -728,8 +743,7 @@ private struct LocalModelBlock: View {
 
     /// The first and last bar's date under the chart, like the other cards.
     private func stamp(_ date: Date?, hourly: Bool) -> String {
-        guard let date else { return "—" }
-        return date.formatted(hourly ? .dateTime.hour(.twoDigits(amPM: .omitted)) : .dateTime.day().month())
+        period.stamp(date, hourly: hourly)
     }
 
     var body: some View {
@@ -771,15 +785,15 @@ private struct LocalModelBlock: View {
     }
 }
 
-/// Today, Week, Month — the picker every usage chart sits under.
-struct UsagePeriodPicker: View {
-    let period: UsageHistoryPeriod
-    let select: (UsageHistoryPeriod) -> Void
+/// Today, Week, Month, Year — the picker every usage chart sits under.
+struct UsagePeriodPicker<Period: PeriodOption>: View {
+    let period: Period
+    let select: (Period) -> Void
     @Environment(\.tooltipSecondaryInk) private var secondaryInk
 
     var body: some View {
         HStack(spacing: Design.px(18)) {
-            ForEach(UsageHistoryPeriod.allCases) { option in
+            ForEach(Period.allCases) { option in
                 Button { select(option) } label: {
                     Text(option.title)
                         .font(option == period ? Typography.cardBody.weight(.semibold) : Typography.cardBody)
@@ -935,7 +949,7 @@ struct DailyTokenUsageChart: View {
             HStack {
                 Text(buckets.first.map { $0.startDate.split(separator: "-").suffix(2).reversed().joined(separator: "/") } ?? "—")
                 Spacer()
-                Text(L10n.t("Today"))
+                Text("Today")
             }
             .font(Typography.cardBody)
             .foregroundStyle(secondaryInk)
@@ -1063,9 +1077,20 @@ private struct UsageResetCreditsSection: View {
 private struct CodexUsageSection: View {
     let usage: CodexTokenUsage
     let now: Date
+    /// Per card, so the Claude and Codex charts can show different ranges.
+    @AppStorage private var periodRaw: String
+
+    init(usage: CodexTokenUsage, providerID: String, now: Date) {
+        self.usage = usage
+        self.now = now
+        _periodRaw = AppStorage(wrappedValue: TokenChartPeriod.month.rawValue,
+                                TokenChartPeriod.preferenceKey(providerID))
+    }
+
+    private var period: TokenChartPeriod { TokenChartPeriod(rawValue: periodRaw) ?? .month }
 
     private var buckets: [CodexTokenUsage.DailyBucket] {
-        usage.last30Days(now: now)
+        usage.buckets(for: period, now: now)
     }
 
     private var maximum: Int {
@@ -1107,13 +1132,19 @@ private struct CodexUsageSection: View {
                 .fill(Palette.ringTrack)
                 .frame(height: NotchLayout.hairline)
 
-            SplitRow(leading: L10n.t("Today"), trailing: todayText)
+            SplitRow(leading: "Today", trailing: todayText)
                 .padding(.top, NotchLayout.blockSpacing)
-            SplitRow(leading: L10n.t("30-day tokens"),
-                     trailing: UsageFormat.tokens(usage.usageInLast30Days(now: now)))
+            UsagePeriodPicker(period: period) { periodRaw = $0.rawValue }
+                .padding(.top, NotchLayout.codexUsageRowGap)
+            SplitRow(leading: period.totalLabel,
+                     trailing: UsageFormat.tokens(usage.usage(in: period, now: now)))
                 .padding(.top, NotchLayout.codexUsageRowGap)
             CodexDailyUsageChart(buckets: buckets, maximum: maximum)
                 .padding(.top, NotchLayout.codexChartTop)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(period.totalLabel)
+                .accessibilityValue(buckets.map { "\($0.startDate): \($0.tokens)" }
+                    .joined(separator: ", "))
         }
     }
 }
@@ -1321,9 +1352,10 @@ struct TooltipCard: View {
                         UsageResetCreditsSection(credits: resetCredits, now: now)
                     }
                     if let tokenUsage = snapshot.tokenUsage {
-                        CodexUsageSection(usage: tokenUsage, now: now)
+                        CodexUsageSection(usage: tokenUsage, providerID: snapshot.id, now: now)
                     } else if let history = snapshot.customUsageHistory {
-                        CodexUsageSection(usage: history.codexUsage, now: now)
+                        CodexUsageSection(usage: history.codexUsage, providerID: snapshot.id,
+                                          now: now)
                     }
                     if let usageDetail = snapshot.usageDetail, usageDetail.hasUsage {
                         DeepSeekUsageDetail(detail: usageDetail, now: now,

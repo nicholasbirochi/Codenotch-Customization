@@ -26,11 +26,11 @@ struct CostSection: View {
     private var shown: [ProjectCost] { Array(model.rows.prefix(min(rows, Self.maxRows))) }
 
     /// The ranges the card offers: the day, the allowance window (a week, or
-    /// a credit cycle) and the month.
-    static let tabs: [CostRange] = [.today, .weekly, .month]
+    /// a credit cycle), the month and the year.
+    static let tabs: [CostRange] = [.today, .weekly, .month, .year]
 
     private func title(_ range: CostRange) -> String {
-        if range == .weekly, model.creditBacked { return L10n.t("Cycle") }
+        if range == .weekly, model.creditBacked { return "Cycle" }
         return range.shortTitle
     }
 

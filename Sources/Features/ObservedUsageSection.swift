@@ -29,8 +29,7 @@ struct ObservedUsageSection: View {
             .padding(.vertical, NotchLayout.codexUsageRowGap)
     }
     private func stamp(_ date: Date?) -> String {
-        guard let date else { return "—" }
-        return date.formatted(slice.hourly ? .dateTime.hour(.twoDigits(amPM: .omitted)) : .dateTime.day().month())
+        period.stamp(date, hourly: slice.hourly)
     }
 
     private var periodPicker: some View {
@@ -54,7 +53,9 @@ struct ObservedUsageSection: View {
                 row(L10n.t("Total observed"), value(history.observedTotal))
                 row(L10n.t("Observed requests"), value(history.observedRequests))
                 if history.source == .openCode {
-                    row(slice.hourly ? L10n.t("Peak hour in period") : L10n.t("Peak day in period"), value(slice.peak))
+                    row(slice.hourly ? L10n.t("Peak hour in period")
+                        : period == .year ? L10n.t("Peak month in period") : L10n.t("Peak day in period"),
+                        value(slice.peak))
                 }
                 row(L10n.t("Input / output in period"), "\(value(slice.input)) / \(value(slice.output))")
                 if history.source == .openCode {

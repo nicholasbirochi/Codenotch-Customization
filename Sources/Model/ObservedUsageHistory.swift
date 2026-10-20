@@ -1,19 +1,43 @@
 import Foundation
 
-enum UsageHistoryPeriod: String, CaseIterable, Identifiable, Codable {
-    case today, week, month
+/// A choice in `UsagePeriodPicker`.
+protocol PeriodOption: CaseIterable, Identifiable, Equatable where AllCases: RandomAccessCollection {
+    var title: String { get }
+}
+
+enum UsageHistoryPeriod: String, CaseIterable, Identifiable, Codable, PeriodOption {
+    case today, week, month, year
     var id: String { rawValue }
+    /// English in every language, as asked: the picker reads Today, Week,
+    /// Month, Year on every card.
     var title: String {
         switch self {
-        case .today: return L10n.t("Today")
-        case .week: return L10n.t("Week")
-        case .month: return L10n.t("Month")
+        case .today: return "Today"
+        case .week: return "Week"
+        case .month: return "Month"
+        case .year: return "Year"
+        }
+    }
+    var component: Calendar.Component {
+        switch self {
+        case .today: return .day
+        case .week: return .weekOfYear
+        case .month: return .month
+        case .year: return .year
         }
     }
     func interval(now: Date, calendar: Calendar) -> DateInterval {
-        calendar.dateInterval(of: self == .today ? .day : self == .week ? .weekOfYear : .month, for: now)!
+        calendar.dateInterval(of: component, for: now)!
     }
     static func preferenceKey(_ providerID: String) -> String { "usageHistory.period.\(providerID)" }
+
+    /// The first and last bar's date under a chart: the hour today, the month
+    /// for a year of monthly bars, the day otherwise.
+    func stamp(_ date: Date?, hourly: Bool) -> String {
+        guard let date else { return "—" }
+        if hourly { return date.formatted(.dateTime.hour(.twoDigits(amPM: .omitted))) }
+        return date.formatted(self == .year ? .dateTime.month() : .dateTime.day().month())
+    }
 }
 
 /// Count/date/project metadata only; no message content or inferred attribution.
@@ -51,6 +75,12 @@ struct ObservedUsageHistory: Equatable, Codable {
     var today = Slice()
     var week = Slice()
     var month = Slice()
+    /// Optional so readings archived before the Year period still decode.
+    private var yearSlice: Slice? = nil
+    var year: Slice {
+        get { yearSlice ?? Slice() }
+        set { yearSlice = newValue }
+    }
     var observedTotal = 0
     var observedRequests: Int? = nil
     var firstObserved: Date? = nil
@@ -81,7 +111,8 @@ struct ObservedUsageHistory: Equatable, Codable {
 
     /// Keep the same project capacity across periods; unknown-only runtimes need one row.
     var projectRowCount: Int {
-        min(4, max(source == .openCode ? 4 : 1, today.projects.count, week.projects.count, month.projects.count))
+        min(4, max(source == .openCode ? 4 : 1, today.projects.count, week.projects.count, month.projects.count,
+                             year.projects.count))
     }
 
     static var unsupported: Self { Self(unavailable: true, source: .quota) }
@@ -96,6 +127,7 @@ struct ObservedUsageHistory: Equatable, Codable {
         case .today: return today
         case .week: return week
         case .month: return month
+        case .year: return year
         }
     }
 
@@ -114,7 +146,9 @@ struct ObservedUsageHistory: Equatable, Codable {
         for period in UsageHistoryPeriod.allCases {
             let interval = period.interval(now: now, calendar: calendar)
             let selected = valid.filter { interval.contains($0.at) && $0.at < interval.end }
-            let component: Calendar.Component = period == .today && hourly ? .hour : .day
+            // A year in days is 365 hair-thin bars; months read better.
+            let component: Calendar.Component = period == .today && hourly ? .hour
+                : period == .year ? .month : .day
             var bucketValues: [Date: Int] = [:]
             var projects: [String: Int] = [:]
             for record in selected {
@@ -145,6 +179,7 @@ struct ObservedUsageHistory: Equatable, Codable {
             case .today: result.today = slice
             case .week: result.week = slice
             case .month: result.month = slice
+            case .year: result.year = slice
             }
         }
         return result

@@ -195,6 +195,7 @@ struct NotchRootView: View {
         .tint(model.accentColor.color)
         .environment(\.codenotchAccentColor, model.accentColor.color)
         .environment(\.notchSurfaceStyle, model.surfaceStyle)
+        .environment(\.tooltipClose, model.onCloseTooltip)
         .environment(\.tooltipSecondaryInk, TooltipGlassContrast.secondaryInk(
             surfaceStyle: model.surfaceStyle,
             colorScheme: colorScheme,

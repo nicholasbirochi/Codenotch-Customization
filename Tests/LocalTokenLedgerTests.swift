@@ -142,6 +142,22 @@ final class LocalTokenLedgerTests: XCTestCase {
         XCTAssertNotNil(ledger.totals(for: "qwen", on: recent))
         XCTAssertEqual(ledger.days["qwen"]?.count, 2)
     }
+
+    func testTheYearViewReadsDaysOlderThanTheHourlyCells() throws {
+        let today = LMStudioLogFixtures.date(2026, 9, 10, 12, 0, 0)
+        let february = LMStudioLogFixtures.date(2026, 2, 3, 9, 0, 0)
+        var ledger = LocalTokenLedger(calendar: calendar)
+        ledger.record(prediction(at: february))
+        ledger.record(prediction(at: today))
+        XCTAssertNil(ledger.hours["qwen"]?.keys.first { $0 < today.addingTimeInterval(-86_400) },
+                     "hour cells age out after \(LocalTokenLedger.hourRetentionDays) days")
+        let history = try XCTUnwrap(ledger.history(for: "qwen", now: today))
+        let year = history.slice(.year)
+        XCTAssertEqual(year.buckets.count, 12)
+        XCTAssertEqual(year.total, history.slice(.today).total * 2)
+        XCTAssertGreaterThan(year.buckets[1].tokens, 0, "February keeps its day")
+        XCTAssertEqual(history.slice(.month).total, history.slice(.today).total, "no double count today")
+    }
 }
 
 final class LocalModelPerformanceSourcesTests: XCTestCase {
