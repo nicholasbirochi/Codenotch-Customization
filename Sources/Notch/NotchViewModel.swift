@@ -243,6 +243,9 @@ final class NotchViewModel: ObservableObject {
     /// A tap on a session row in the tooltip: jump to the terminal tab the
     /// session runs in. Takes the session's pid; wired to `SessionFocus`.
     var onFocusSession: ((pid_t) -> Void)?
+    /// The × on the tooltip card: fold the notch now, even when it was kept
+    /// open. Wired to `NotchWindowController.closeTooltip`.
+    var onCloseTooltip: (() -> Void)?
     /// Which screen edge the notch is welded to. Everything geometric reads
     /// this through `placement` rather than assuming an axis.
     @Published var edge: NotchEdge = .right

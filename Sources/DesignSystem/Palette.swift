@@ -148,6 +148,19 @@ private struct CodenotchHeadlessGlassKey: EnvironmentKey {
     static let defaultValue: Bool = false
 }
 
+private struct TooltipCloseKey: EnvironmentKey {
+    static let defaultValue: (() -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    /// Closes the open tooltip and folds the notch. Absent, the card draws no ×
+    /// — renders and previews have nothing to close.
+    var tooltipClose: (() -> Void)? {
+        get { self[TooltipCloseKey.self] }
+        set { self[TooltipCloseKey.self] = newValue }
+    }
+}
+
 private struct TooltipSecondaryInkKey: EnvironmentKey {
     static let defaultValue = Palette.textSecondary
 }

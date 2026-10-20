@@ -105,6 +105,10 @@ final class NotchWindowController {
     /// them as the panel follows it — so cursor tracking is suspended until
     /// the drag ends.
     private var isOptionDragging = false
+    /// Closed with the card's × while the pointer was still on it: the notch
+    /// stays folded until the pointer has left, or the hover that is still
+    /// there would open it again on the next poll.
+    private var closedUntilPointerLeaves = false
 
     /// Determines whether a full-screen application window is active on this notch's display.
     /// Default implementation queries WindowServer and NSWorkspace; overridable for testing.
@@ -194,6 +198,7 @@ final class NotchWindowController {
     }
 
     func show() {
+        model.onCloseTooltip = { [weak self] in self?.closeTooltip() }
         relocate()
         startWatchingCursor()
         startWatchingFullScreen()
@@ -1423,7 +1428,9 @@ final class NotchWindowController {
         // handleActiveSpaceOrAppChange: left ungated, the hover fold out-votes
         // "Always show" under a full-screen app while the other path keeps
         // restoring it — the notch ends up folding on every poll.
-        setExpanded(liveRect.contains(local) || overTooltip,
+        let pointerOn = liveRect.contains(local) || overTooltip
+        if closedUntilPointerLeaves, !pointerOn { closedUntilPointerLeaves = false }
+        setExpanded(pointerOn && !closedUntilPointerLeaves,
                     ignoreAlwaysOn: foldsForFullScreen && isFullScreenActive())
 
         var target: Int?
@@ -1624,6 +1631,9 @@ final class NotchWindowController {
             return
         }
         guard model.isExpanded else {
+            // A click is asking for it back, even with the pointer still
+            // where it was when the card was closed.
+            closedUntilPointerLeaves = false
             // Opens it, the same as the pointer arriving would — it must not
             // also pin it. The pill's hot zone is deliberately generous, since
             // it is a small target on a screen edge, so a click aimed at
@@ -1982,6 +1992,26 @@ final class NotchWindowController {
     }
 
     /// Clicking the open notch pins it, so it stays put while you read it.
+    /// The card's × (and Esc): fold now, unpinned, and stay folded until the
+    /// pointer has left — closing is an answer, not a hover that wanders off.
+    func closeTooltip() {
+        model.isPinned = false
+        foldWork?.cancel()
+        foldWork = nil
+        clearHoverWork?.cancel()
+        clearHoverWork = nil
+        peekWork?.cancel()
+        peekWork = nil
+        peekUntil = nil
+        closedUntilPointerLeaves = true
+        withAnimation(NotchMotion.unfold) {
+            model.isExpanded = false
+            model.hoveredIndex = nil
+        }
+        setPointing(false)
+        updateInteractiveRects()
+    }
+
     func togglePinned() {
         model.isPinned.toggle()
         if model.isPinned {

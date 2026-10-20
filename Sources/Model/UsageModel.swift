@@ -494,6 +494,7 @@ struct ProviderSnapshot: Identifiable, Equatable {
         case .today: return L10n.t("\(count) tokens today")
         case .week: return L10n.t("\(count) tokens this week")
         case .month: return L10n.t("\(count) tokens this month")
+        case .year: return L10n.t("\(count) tokens this year")
         }
     }
 

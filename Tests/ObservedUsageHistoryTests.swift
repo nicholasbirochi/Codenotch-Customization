@@ -89,6 +89,35 @@ final class ObservedUsageHistoryTests: XCTestCase {
         XCTAssertEqual(usage.historyRecords.first?.input, 10)
         XCTAssertEqual(usage.historyRecords.first?.output, 20)
     }
+
+    func testYearIsTheCalendarYearInMonthlyBars() {
+        let now = date(17, hour: 20)
+        let history = ObservedUsageHistory.aggregate([
+            .init(at: date(17, hour: 9), tokens: 100),
+            .init(at: date(3, month: 2), tokens: 40),
+            .init(at: calendar.date(from: DateComponents(year: 2025, month: 12, day: 31, hour: 12))!, tokens: 900)
+        ], now: now, calendar: calendar)
+        XCTAssertEqual(history.year.buckets.count, 12)
+        XCTAssertFalse(history.year.hourly)
+        XCTAssertEqual(history.year.total, 140, "last December is another year")
+        XCTAssertEqual(history.year.buckets[1].tokens, 40)
+        XCTAssertEqual(history.year.buckets[9].tokens, 100)
+        XCTAssertTrue(history.isCurrent(.year, now: now, calendar: calendar))
+        XCTAssertEqual(UsageHistoryPeriod.year.stamp(history.year.buckets[0].at, hourly: false),
+                       history.year.buckets[0].at.formatted(.dateTime.month()))
+    }
+
+    func testPeriodLabelsStayEnglishOnEveryCard() {
+        XCTAssertEqual(UsageHistoryPeriod.allCases.map(\.title), ["Today", "Week", "Month", "Year"])
+        XCTAssertEqual(TokenChartPeriod.allCases.map(\.title), ["Week", "Month", "Year"])
+        XCTAssertEqual(CostSection.tabs.map(\.shortTitle), ["Today", "Week", "Month", "Year"])
+    }
+
+    func testCostYearStartsOnTheFirstOfJanuary() throws {
+        let start = try XCTUnwrap(CostRange.year.start)
+        let parts = Calendar.current.dateComponents([.month, .day, .hour], from: start)
+        XCTAssertEqual([parts.month, parts.day, parts.hour], [1, 1, 0])
+    }
 }
 
 @MainActor
@@ -130,8 +159,8 @@ final class ObservedUsageRenderTests: XCTestCase {
                 }
             }
         }
-        XCTAssertEqual(CostSection.tabs, [.today, .weekly, .month])
-        XCTAssertEqual(UsageHistoryPeriod.allCases, [.today, .week, .month])
+        XCTAssertEqual(CostSection.tabs, [.today, .weekly, .month, .year])
+        XCTAssertEqual(UsageHistoryPeriod.allCases, [.today, .week, .month, .year])
         if let directory = ProcessInfo.processInfo.environment["HISTORY_RENDER_DIR"] {
             for (id, glyph, title, value) in [
                 ("demo-nvidia", ProviderGlyph.nvidia, "NVIDIA NIM", history),
