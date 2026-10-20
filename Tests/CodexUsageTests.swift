@@ -470,6 +470,11 @@ final class CodexUsageTests: XCTestCase {
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!
         let now = calendar.date(from: DateComponents(year: 2026, month: 9, day: 9, hour: 15))!
 
+        let today = usage.buckets(for: .today, now: now, calendar: calendar)
+        XCTAssertEqual(today.map(\.startDate), ["2026-09-09"])
+        XCTAssertEqual(usage.usage(in: .today, now: now, calendar: calendar),
+                       usage.usageToday(now: now, calendar: calendar) ?? 0)
+
         let week = usage.buckets(for: .week, now: now, calendar: calendar)
         XCTAssertEqual(week.count, 7)
         XCTAssertEqual(week.first?.startDate, "2026-09-03")
@@ -490,7 +495,7 @@ final class CodexUsageTests: XCTestCase {
     }
 
     func testChartPeriodIsRememberedPerCard() {
-        XCTAssertEqual(TokenChartPeriod.allCases, [.week, .month, .year])
+        XCTAssertEqual(TokenChartPeriod.allCases, [.today, .week, .month, .year])
         XCTAssertNotEqual(TokenChartPeriod.preferenceKey("claude"),
                           TokenChartPeriod.preferenceKey("codex"))
         XCTAssertNotEqual(TokenChartPeriod.preferenceKey("codex"),
@@ -508,8 +513,8 @@ final class CodexUsageTests: XCTestCase {
                 + NotchLayout.codexMetricTop + NotchLayout.codexMetricHeight
                 + NotchLayout.codexMetricBottom
                 + NotchLayout.hairline
-                + 3 * NotchLayout.cardBodyLineHeight
-                + 2 * NotchLayout.codexUsageRowGap
+                + 2 * NotchLayout.cardBodyLineHeight
+                + NotchLayout.codexUsageRowGap
                 + NotchLayout.codexChartTop + NotchLayout.codexChartHeight,
             accuracy: 0.001
         )

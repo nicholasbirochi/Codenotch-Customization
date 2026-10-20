@@ -121,6 +121,9 @@ struct ClaudeProfile: Equatable, Hashable {
     /// land in its own ring.
     var id: String { slug.map { "\(Self.defaultID)-\($0)" } ?? Self.defaultID }
 
+    /// The name of the only Claude ring, and of any profile with nothing better.
+    static let defaultName = "Claude"
+
     /// `Claude Gmail`, `Claude Acme` — the account's own name where Claude Code
     /// records one — and `Claude` or `Claude (work)` where it does not.
     ///
@@ -139,7 +142,7 @@ struct ClaudeProfile: Equatable, Hashable {
     /// has to be named something, and the directory is all there is then.
     var displayName: String {
         guard let label = accountLabel() else {
-            return slug.map { "Claude (\($0))" } ?? "Claude"
+            return slug.map { "Claude (\($0))" } ?? Self.defaultName
         }
         return "Claude \(label)"
     }
@@ -178,8 +181,12 @@ struct ClaudeProfile: Equatable, Hashable {
     /// Two logins on the same provider — two gmail.com accounts, or two on one
     /// company domain — would draw two rings with identical names, which is
     /// worse than the directory names this replaced. Only the profiles that
-    /// actually collide pay the longer name.
+    /// actually collide pay the longer name. A lone profile has nothing to be
+    /// told apart from, so it is just `Claude`.
     static func displayNames(for profiles: [ClaudeProfile]) -> [String: String] {
+        if profiles.count == 1, let only = profiles.first {
+            return [only.id: defaultName]
+        }
         var sharing: [String: Int] = [:]
         for profile in profiles { sharing[profile.displayName, default: 0] += 1 }
 
