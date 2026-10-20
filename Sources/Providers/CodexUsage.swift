@@ -55,12 +55,14 @@ struct CodexTokenUsage: Codable, Equatable, Sendable {
         last30Days(now: now, calendar: calendar).reduce(0) { $0 + $1.tokens }
     }
 
-    /// The bars for one chart period: a bar per day for a week or a month, a
-    /// bar per calendar month for a year. Days the source never reported count
-    /// as zero, so the bar count never depends on how much history exists.
+    /// The bars for one chart period: today's single bar, a bar per day for a
+    /// week or a month, a bar per calendar month for a year. Days the source
+    /// never reported count as zero, so the bar count never depends on how much
+    /// history exists.
     func buckets(for period: TokenChartPeriod, now: Date = Date(),
                  calendar: Calendar = .current) -> [DailyBucket] {
         switch period {
+        case .today: return lastDays(1, now: now, calendar: calendar)
         case .week: return lastDays(7, now: now, calendar: calendar)
         case .month: return lastDays(30, now: now, calendar: calendar)
         case .year: return last12Months(now: now, calendar: calendar)
@@ -122,20 +124,22 @@ struct CodexTokenUsage: Codable, Equatable, Sendable {
 
 /// The range the Codex/Claude token chart covers, chosen per card.
 enum TokenChartPeriod: String, CaseIterable, Identifiable, PeriodOption {
-    case week, month, year
+    case today, week, month, year
     var id: String { rawValue }
     /// English in every language, like the other period pickers.
     var title: String {
         switch self {
+        case .today: return "Today"
         case .week: return "Week"
         case .month: return "Month"
         case .year: return "Year"
         }
     }
-    /// The label beside the period's total. Rolling, like the bars: the last
-    /// 7 or 30 days, or this month and the eleven before it.
+    /// The label beside the period's total. Rolling, like the bars: today, the
+    /// last 7 or 30 days, or this month and the eleven before it.
     var totalLabel: String {
         switch self {
+        case .today: return "Tokens today"
         case .week: return "7-day tokens"
         case .month: return "30-day tokens"
         case .year: return "12-month tokens"

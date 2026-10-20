@@ -109,7 +109,7 @@ final class ObservedUsageHistoryTests: XCTestCase {
 
     func testPeriodLabelsStayEnglishOnEveryCard() {
         XCTAssertEqual(UsageHistoryPeriod.allCases.map(\.title), ["Today", "Week", "Month", "Year"])
-        XCTAssertEqual(TokenChartPeriod.allCases.map(\.title), ["Week", "Month", "Year"])
+        XCTAssertEqual(TokenChartPeriod.allCases.map(\.title), ["Today", "Week", "Month", "Year"])
         XCTAssertEqual(CostSection.tabs.map(\.shortTitle), ["Today", "Week", "Month", "Year"])
     }
 

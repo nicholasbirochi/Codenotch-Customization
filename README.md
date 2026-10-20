@@ -33,12 +33,12 @@ Dev updates are built from this repository to preserve its customizations.
 Local OpenCode/NVIDIA and per-model runtime history uses recorded counts only,
 with Today/Week/Month/Year views (Year is the calendar year in 12 monthly bars;
 runtime logs keep a year of daily totals and 60 days of hourly ones) and explicit
-unknown project attribution. Copilot retains its quota categories; its current
-source does not provide a dated event history or projects, so its card has no
-period picker. See [monitoring scope and validation](docs/dev-monitoring.md).
-The Claude and Codex cards draw their token chart for a Week (7 daily bars),
-Month (30 daily bars) or Year (12 monthly bars) picked on each card and
-remembered per card. Claude's year comes from Codenotch's own local index;
+unknown project attribution. Copilot retains its quota categories and shows the
+same picker, but its current source does not provide a dated event history or
+projects, so its periods stay empty. See [monitoring scope and validation](docs/dev-monitoring.md).
+The Claude and Codex cards draw their token chart for Today (one bar, measured
+against the busiest day), a Week (7 daily bars), Month (30 daily bars) or Year
+(12 monthly bars) picked on each card and remembered per card. Claude's year comes from Codenotch's own local index;
 Codex's covers only the days its server profile returns. Every period picker,
 including Today/Week/Month/Year in the cost section, shows its labels in English
 on one row whatever the app language.
@@ -193,6 +193,8 @@ is running, and what it wants.
 Two Claude Code logins are two rings. Anyone who keeps a work account apart with
 `CLAUDE_CONFIG_DIR=~/.claude-work claude` gets a **Claude (work)** ring beside the
 personal one, with its own limits, its own sessions and its own row in Settings.
+Rings are named after the signed-in account's domain (**Claude Gmail**) only when
+there is more than one; a single login is just **Claude**.
 Any `~/.claude-<slug>` directory Claude Code has run against is found at launch;
 the default `~/.claude` always comes first, the rest in alphabetical order, so the
 rings never swap places.

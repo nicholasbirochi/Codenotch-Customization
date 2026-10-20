@@ -1093,12 +1093,17 @@ private struct CodexUsageSection: View {
         usage.buckets(for: period, now: now)
     }
 
+    /// Today's lone bar is measured against the busiest day, so it says how
+    /// today compares instead of always filling the chart.
     private var maximum: Int {
-        max(1, buckets.map(\.tokens).max() ?? 0)
+        let tallest = buckets.map(\.tokens).max() ?? 0
+        return max(1, period == .today ? max(tallest, usage.peakDailyTokens ?? 0) : tallest)
     }
 
-    private var todayText: String {
-        usage.usageToday(now: now).map { UsageFormat.tokens($0) } ?? L10n.t("Pending")
+    /// A missing bucket for today is pending, not zero.
+    private var totalText: String {
+        guard period == .today else { return UsageFormat.tokens(usage.usage(in: period, now: now)) }
+        return usage.usageToday(now: now).map { UsageFormat.tokens($0) } ?? L10n.t("Pending")
     }
 
     private var metrics: [CodexMetric] {
@@ -1132,12 +1137,9 @@ private struct CodexUsageSection: View {
                 .fill(Palette.ringTrack)
                 .frame(height: NotchLayout.hairline)
 
-            SplitRow(leading: "Today", trailing: todayText)
-                .padding(.top, NotchLayout.blockSpacing)
             UsagePeriodPicker(period: period) { periodRaw = $0.rawValue }
-                .padding(.top, NotchLayout.codexUsageRowGap)
-            SplitRow(leading: period.totalLabel,
-                     trailing: UsageFormat.tokens(usage.usage(in: period, now: now)))
+                .padding(.top, NotchLayout.blockSpacing)
+            SplitRow(leading: period.totalLabel, trailing: totalText)
                 .padding(.top, NotchLayout.codexUsageRowGap)
             CodexDailyUsageChart(buckets: buckets, maximum: maximum)
                 .padding(.top, NotchLayout.codexChartTop)

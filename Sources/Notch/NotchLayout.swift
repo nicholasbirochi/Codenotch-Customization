@@ -495,8 +495,8 @@ enum NotchLayout {
             height += codexUsageTop + hairline + blockSpacing
                 + codexMetricTop + codexMetricHeight + codexMetricBottom
                 + hairline
-                + 3 * cardBodyLineHeight      // today, period picker, period total
-                + 2 * codexUsageRowGap
+                + 2 * cardBodyLineHeight      // period picker, period total
+                + codexUsageRowGap
                 + codexChartTop + codexChartHeight
         }
 
