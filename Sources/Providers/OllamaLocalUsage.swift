@@ -41,6 +41,50 @@ enum OllamaLocalUsage {
         return LocalRuntimeReading(models: models)
     }
 
+    private struct TagsResponse: Decodable {
+        struct Model: Decodable {
+            struct Details: Decodable {
+                let quantization_level: String?
+                let context_length: Int?
+            }
+
+            let name: String
+            let size: Int64?
+            let details: Details?
+        }
+        let models: [Model]
+    }
+
+    /// Every installed model from `/api/tags`, shown as not loaded so each one
+    /// has a cell to hover while the server is idle. The byte count is the
+    /// size on disk, labelled as such. Empty when nothing is installed or the
+    /// listing cannot be read: the idle summary then stands as before.
+    static func parseInstalled(_ data: Data) -> [LocalRuntimeReading.Model] {
+        guard let response = try? JSONDecoder().decode(TagsResponse.self, from: data) else { return [] }
+        var seen = Set<String>()
+        return response.models.compactMap { model -> LocalRuntimeReading.Model? in
+            guard !model.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  model.size.map({ $0 >= 0 }) ?? true,
+                  seen.insert(OllamaThinkingStream.modelKey(model.name)).inserted else { return nil }
+            let quantization = model.details?.quantization_level?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return LocalRuntimeReading.Model(
+                name: model.name, memoryBytes: model.size,
+                contextLength: model.details?.context_length.flatMap { $0 > 0 ? $0 : nil },
+                quantizationLevel: quantization?.isEmpty == false ? quantization : nil,
+                memoryKind: .modelSize, loaded: false)
+        }.sorted { $0.id < $1.id }
+    }
+
+    /// Loaded models first, then the installed ones not already loaded. A
+    /// client may name a model without its implicit `:latest`, so both lists
+    /// are compared by the relay's key.
+    static func merging(loaded: [LocalRuntimeReading.Model],
+                        installed: [LocalRuntimeReading.Model]) -> [LocalRuntimeReading.Model] {
+        let keys = Set(loaded.map { OllamaThinkingStream.modelKey($0.name) })
+        return loaded + installed.filter { !keys.contains(OllamaThinkingStream.modelKey($0.name)) }
+    }
+
     static func parseISO8601(_ string: String) -> Date? {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]

@@ -584,6 +584,7 @@ enum CostRange: String, CaseIterable, Identifiable {
     case session
     case weekly
     case month
+    case year
     case allTime
 
     var id: String { rawValue }
@@ -595,18 +596,21 @@ enum CostRange: String, CaseIterable, Identifiable {
         case .session: return L10n.t("This session")
         case .weekly:  return L10n.t("This week")
         case .month:   return L10n.t("This month")
+        case .year:    return L10n.t("This year")
         case .allTime: return L10n.t("All time")
         }
     }
 
-    /// Used in the picker, where four labels have to fit on one line.
+    /// Used in the picker, where four labels have to fit on one line. English
+    /// in every language, like the chart pickers.
     var shortTitle: String {
         switch self {
-        case .today:   return L10n.t("Today")
-        case .session: return L10n.t("Session")
-        case .weekly:  return L10n.t("Week")
-        case .month:   return L10n.t("Month")
-        case .allTime: return L10n.t("All")
+        case .today:   return "Today"
+        case .session: return "Session"
+        case .weekly:  return "Week"
+        case .month:   return "Month"
+        case .year:    return "Year"
+        case .allTime: return "All"
         }
     }
 
@@ -617,7 +621,7 @@ enum CostRange: String, CaseIterable, Identifiable {
         switch self {
         case .session: return .session
         case .weekly:  return .weekly
-        case .today, .month, .allTime: return nil
+        case .today, .month, .year, .allTime: return nil
         }
     }
 
@@ -629,6 +633,9 @@ enum CostRange: String, CaseIterable, Identifiable {
         case .month:
             let cal = Calendar.current
             return cal.date(from: cal.dateComponents([.year, .month], from: Date()))
+        case .year:
+            let cal = Calendar.current
+            return cal.date(from: cal.dateComponents([.year], from: Date()))
         default:
             return nil
         }

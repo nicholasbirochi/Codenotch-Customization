@@ -2,7 +2,7 @@ import Foundation
 
 /// One completed response, as the runtime's own log recorded it: counts and
 /// timings only. No prompt, reasoning or reply text ever enters this type.
-struct LocalPrediction: Equatable {
+struct LocalPrediction: Equatable, Codable {
     /// The model instance the request was addressed to.
     let instance: String
     let at: Date
@@ -40,9 +40,12 @@ struct LocalPrediction: Equatable {
 /// Tokens per model per day, added up from the responses a local runtime
 /// logged. The local counterpart of a cloud quota: nothing here is a limit,
 /// it is what was actually spent.
-struct LocalTokenLedger: Equatable {
-    struct Totals: Equatable {
+struct LocalTokenLedger: Equatable, Codable {
+    struct Totals: Equatable, Codable {
         var requests = 0
+        var inputSamples = 0
+        var outputSamples = 0
+        var reasoningSamples = 0
         var inputTokens = 0
         var outputTokens = 0
         var reasoningTokens = 0
@@ -51,6 +54,9 @@ struct LocalTokenLedger: Equatable {
 
         mutating func add(_ prediction: LocalPrediction) {
             requests += 1
+            if prediction.inputTokens != nil { inputSamples += 1 }
+            if prediction.outputTokens != nil { outputSamples += 1 }
+            if prediction.reasoningTokens != nil { reasoningSamples += 1 }
             inputTokens += prediction.inputTokens ?? 0
             outputTokens += prediction.outputTokens ?? 0
             reasoningTokens += prediction.reasoningTokens ?? 0
@@ -63,7 +69,9 @@ struct LocalTokenLedger: Equatable {
         /// The share of generated tokens spent thinking rather than answering.
         /// Nil until something was generated — a share of nothing is not 0%.
         var reasoningShare: Double? {
-            outputTokens > 0 ? Double(reasoningTokens) / Double(outputTokens) : nil
+            guard requests > 0, reasoningSamples == requests, outputSamples == requests,
+                  outputTokens > 0 else { return nil }
+            return Double(reasoningTokens) / Double(outputTokens)
         }
 
         /// How many speculative drafts the model kept. Nil when the runtime
@@ -94,7 +102,9 @@ struct LocalTokenLedger: Equatable {
         }
 
         var tokensTodayText: String {
-            L10n.t("\(LimitWindow.compact(today.inputTokens)) in · \(LimitWindow.compact(today.outputTokens)) out")
+            let input = today.inputSamples == today.requests ? LimitWindow.compact(today.inputTokens) : "—"
+            let output = today.outputSamples == today.requests ? LimitWindow.compact(today.outputTokens) : "—"
+            return L10n.t("\(input) in · \(output) out")
         }
 
         var requestsTodayText: String { "\(today.requests)" }
@@ -124,10 +134,13 @@ struct LocalTokenLedger: Equatable {
     /// Per instance, per local calendar day.
     private(set) var days: [String: [Date: Totals]] = [:]
     private(set) var last: [String: LocalPrediction] = [:]
+    private(set) var hours: [String: [Date: Totals]] = [:]
 
-    /// Long enough for a month's view later; old days are dropped as new ones
-    /// arrive, so a year of logs does not stay resident for a reading about today.
-    static let retentionDays = 60
+    /// Daily totals cover the Year view (a calendar year is at most 366
+    /// days back); hourly ones only the shorter periods, so a year of
+    /// hour cells does not stay resident for a reading about today.
+    static let retentionDays = 366
+    static let hourRetentionDays = 60
 
     var isEmpty: Bool { days.isEmpty }
     var instances: [String] { Array(days.keys).sorted() }
@@ -136,18 +149,47 @@ struct LocalTokenLedger: Equatable {
     /// own model up — and defaults to the instance the log named.
     mutating func record(_ prediction: LocalPrediction, as key: String? = nil) {
         let instance = key ?? prediction.instance
+        guard !instance.isEmpty, instance.count <= 512, prediction.at.timeIntervalSince1970.isFinite,
+              prediction.at.timeIntervalSince1970 >= 0,
+              (prediction.inputTokens ?? 0) >= 0, (prediction.outputTokens ?? 0) >= 0,
+              (prediction.reasoningTokens ?? 0) >= 0 else { return }
         let day = calendar.startOfDay(for: prediction.at)
+        let hour = calendar.dateInterval(of: .hour, for: prediction.at)!.start
+        hours[instance, default: [:]][hour, default: Totals()].add(prediction)
         days[instance, default: [:]][day, default: Totals()].add(prediction)
         // History is read oldest-first, but a live line can land while an
         // older file is still being read; the newest response keeps the cell.
         if (last[instance]?.at ?? .distantPast) <= prediction.at {
             last[instance] = prediction
         }
-        if let cutoff = calendar.date(byAdding: .day, value: -Self.retentionDays, to: day) {
+        let newest = max(day, last.values.map { calendar.startOfDay(for: $0.at) }.max() ?? day)
+        if let cutoff = calendar.date(byAdding: .day, value: -Self.retentionDays, to: newest) {
             for instance in days.keys {
                 days[instance]?.keys.filter { $0 < cutoff }.forEach { days[instance]?.removeValue(forKey: $0) }
             }
         }
+        if let cutoff = calendar.date(byAdding: .day, value: -Self.hourRetentionDays, to: newest) {
+            for instance in hours.keys {
+                hours[instance]?.keys.filter { $0 < cutoff }.forEach { hours[instance]?.removeValue(forKey: $0) }
+            }
+        }
+    }
+
+    func history(for instance: String, now: Date) -> ObservedUsageHistory? {
+        guard days[instance] != nil else { return nil }
+        let detailed = hours[instance]
+        // Hours where they are kept, whole days before that (the Year view).
+        let coveredDays = Set((detailed ?? [:]).keys.map { calendar.startOfDay(for: $0) })
+        let olderDays = (days[instance] ?? [:]).filter { !coveredDays.contains($0.key) }
+        let buckets = (detailed ?? [:]).merging(olderDays) { hour, _ in hour }
+        let records = buckets.map { at, totals in
+            ObservedUsageHistory.Record(at: at, tokens: totals.totalTokens, requests: totals.requests,
+                input: totals.inputSamples == totals.requests ? totals.inputTokens : nil,
+                output: totals.outputSamples == totals.requests ? totals.outputTokens : nil)
+        }
+        var history = ObservedUsageHistory.aggregate(records, now: now, calendar: calendar, hourly: detailed != nil)
+        history.source = instance.hasPrefix("ollama-local:") ? .relay : .runtimeLog
+        return history
     }
 
     func totals(for instance: String, on day: Date) -> Totals? {
@@ -166,6 +208,9 @@ struct LocalTokenLedger: Equatable {
         return days.values.reduce(into: Totals()) { sum, perDay in
             guard let totals = perDay[day] else { return }
             sum.requests += totals.requests
+            sum.inputSamples += totals.inputSamples
+            sum.outputSamples += totals.outputSamples
+            sum.reasoningSamples += totals.reasoningSamples
             sum.inputTokens += totals.inputTokens
             sum.outputTokens += totals.outputTokens
             sum.reasoningTokens += totals.reasoningTokens

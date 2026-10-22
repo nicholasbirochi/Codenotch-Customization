@@ -104,15 +104,20 @@ final class OllamaModelCellTests: XCTestCase {
             windows: [LimitWindow(id: "session", label: "Session", usedFraction: 0.4)])
         let model = NotchViewModel()
         model.updateSnapshots([cloud, ollamaSnapshot(reading)])
-        XCTAssertEqual(model.snapshots.count, 3)
+        XCTAssertEqual(model.snapshots.count, 2, "One Ollama card holds every model")
         XCTAssertEqual(model.snapshots[0], cloud)
-        XCTAssertEqual(model.snapshots.dropFirst().map(\.providerID), ["ollama-local", "ollama-local"])
-        XCTAssertEqual(model.snapshots.dropFirst().map(\.headlineText),
-                       [expectedGigabytes(4.5), expectedGigabytes(6)])
-        XCTAssertEqual(Set(model.snapshots.map(\.id)).count, 3)
-        XCTAssertTrue(model.snapshots.dropFirst().allSatisfy { $0.ringFraction == nil })
-        XCTAssertEqual(model.snapshots[1].localModel?.contextText, expectedTokens(2048))
-        XCTAssertEqual(model.snapshots[2].localModel?.contextText, "Unavailable")
+        let group = model.snapshots[1]
+        XCTAssertEqual(group.id, "ollama-local")
+        XCTAssertEqual(group.headlineText, "0", "Nothing logged, so no tokens spent")
+        XCTAssertNil(group.ringFraction)
+        let models = group.localModelCells
+        XCTAssertEqual(models.map(\.providerID), ["ollama-local", "ollama-local"])
+        XCTAssertEqual(models.map(\.localModel?.memoryText), [expectedGigabytes(4.5), expectedGigabytes(6)])
+        XCTAssertEqual(models.map(\.headlineText), ["0", "0"])
+        XCTAssertEqual(Set(model.snapshots.flatMap(\.modelCells).map(\.id)).count, 3)
+        XCTAssertTrue(models.allSatisfy { $0.ringFraction == nil })
+        XCTAssertEqual(models[0].localModel?.contextText, expectedTokens(2048))
+        XCTAssertEqual(models[1].localModel?.contextText, "Unavailable")
     }
 
     func testHoverKeepsTheSameModelWhenNeighborsChangeAndClearsOnUnload() throws {
@@ -122,15 +127,17 @@ final class OllamaModelCellTests: XCTestCase {
             model.updateSnapshots([ollamaSnapshot(try OllamaLocalUsage.parse(data))])
         }
         try update(["b-model", "a-model"])
-        model.hoveredIndex = 1
-        let selectedID = model.hoveredSnapshot?.id
+        model.hoveredIndex = 0
+        XCTAssertEqual(model.hoveredSnapshot?.id, "ollama-local")
+        XCTAssertEqual(model.hoveredSnapshot?.localModelGroupNames, ["a-model", "b-model"])
         try update(["b-model"])
-        XCTAssertEqual(model.hoveredIndex, 0)
-        XCTAssertEqual(model.hoveredSnapshot?.id, selectedID)
+        XCTAssertEqual(model.hoveredIndex, 0, "The card stays hovered while its models change")
+        XCTAssertEqual(model.hoveredSnapshot?.localModelGroupNames, ["b-model"])
         try update(["c-model"])
-        XCTAssertNil(model.hoveredIndex)
+        XCTAssertEqual(model.hoveredSnapshot?.localModelGroupNames, ["c-model"])
         try update([])
         XCTAssertTrue(model.snapshots.isEmpty)
+        XCTAssertNil(model.hoveredIndex)
     }
 
     func testDiscoveryAppendsModelsWithoutReorderingExistingCellsOrTheirHover() throws {
@@ -143,29 +150,25 @@ final class OllamaModelCellTests: XCTestCase {
             model.updateSnapshots([cloud, ollamaSnapshot(try OllamaLocalUsage.parse(data))])
         }
         try update(["qwen3:8b", "llama3.1:8b"], size: 100)
-        model.hoveredIndex = 2
-        let hoveredID = model.hoveredSnapshot?.id
+        model.hoveredIndex = 1
         try update(["deepseek-r1:1.5b", "qwen3:8b", "llama3.1:8b"], size: 200)
-        XCTAssertEqual(model.snapshots.dropFirst().compactMap { $0.localModel?.name },
-                       ["llama3.1:8b", "qwen3:8b", "deepseek-r1:1.5b"])
-        XCTAssertEqual(model.hoveredIndex, 2)
-        XCTAssertEqual(model.hoveredSnapshot?.id, hoveredID)
-        XCTAssertEqual(model.hoveredSnapshot?.localModel?.memoryBytes, 200)
+        XCTAssertEqual(model.snapshots.map(\.id), [cloud.id, "ollama-local"])
+        XCTAssertEqual(model.snapshots[1].localModelGroupNames, ["deepseek-r1:1.5b", "llama3.1:8b", "qwen3:8b"],
+                       "Smallest first, a tie by name")
+        XCTAssertEqual(model.hoveredIndex, 1)
+        XCTAssertEqual(model.hoveredSnapshot?.id, "ollama-local")
+        XCTAssertTrue(model.hoveredSnapshot?.localModelCells.allSatisfy { $0.localModel?.memoryBytes == 200 } == true)
         XCTAssertEqual(model.snapshots[0], cloud)
         try update(["deepseek-r1:1.5b", "qwen3:8b"], size: 300)
-        XCTAssertEqual(model.snapshots.dropFirst().compactMap { $0.localModel?.name },
-                       ["qwen3:8b", "deepseek-r1:1.5b"])
-        XCTAssertEqual(model.hoveredSnapshot?.id, hoveredID)
-        try update(["llama3.1:8b", "qwen3:8b", "deepseek-r1:1.5b"], size: 400)
-        XCTAssertEqual(model.snapshots.dropFirst().compactMap { $0.localModel?.name },
-                       ["qwen3:8b", "deepseek-r1:1.5b", "llama3.1:8b"])
+        XCTAssertEqual(model.snapshots[1].localModelGroupNames, ["deepseek-r1:1.5b", "qwen3:8b"])
+        XCTAssertEqual(model.hoveredSnapshot?.id, "ollama-local")
     }
 
     func testLocalClickFeedbackIsIndependentFromPollingAndOtherModelClicks() async throws {
         let model = NotchViewModel()
         model.updateSnapshots([Fixtures.snapshots()[0], ollamaSnapshot(try OllamaLocalUsage.parse(
             Data(#"{"models":[{"name":"llama3.1:8b"},{"name":"qwen3:8b"}]}"#.utf8)))])
-        let cloud = model.snapshots[0], first = model.snapshots[1], second = model.snapshots[2]
+        let cloud = model.snapshots[0], first = model.snapshots[1], second = model.snapshots[1].localModelCells[1]
         model.refreshing = ["ollama-local", cloud.providerID]
         XCTAssertTrue(model.isRefreshing(cloud))
         XCTAssertFalse(model.isRefreshing(first), "Inventory polling must not press model icons")
@@ -230,7 +233,6 @@ final class OllamaModelCellTests: XCTestCase {
                 for _ in 0..<100 where requestedIDs.isEmpty { await Task.yield() }
                 XCTAssertEqual(requestedIDs, ["ollama-local"], edge.rawValue)
                 XCTAssertTrue(model.isRefreshing(model.snapshots[1]), edge.rawValue)
-                XCTAssertFalse(model.isRefreshing(model.snapshots[2]), edge.rawValue)
                 XCTAssertFalse(model.isRefreshing(model.snapshots[0]), edge.rawValue)
             }
         }
@@ -256,12 +258,14 @@ final class OllamaModelCellTests: XCTestCase {
         XCTAssertEqual(fleet.controllersForTesting.count, NSScreen.screens.count)
         for controller in fleet.controllersForTesting {
             let model = controller.model
-            XCTAssertEqual(model.snapshots.map(\.id),
-                           [cloud.id, "ollama-local:model:llama3.1:8b", "ollama-local:model:qwen3:8b"])
-            XCTAssertNil(model.snapshots[1].localPerformance)
-            XCTAssertEqual(model.snapshots[2].localPerformance, measurement)
-            XCTAssertNil(model.activity(for: model.snapshots[1]))
-            XCTAssertEqual(model.activity(for: model.snapshots[2])?.state, .working)
+            XCTAssertEqual(model.snapshots.map(\.id), [cloud.id, "ollama-local"])
+            let models = model.snapshots[1].localModelCells
+            XCTAssertEqual(models.map(\.id), ["ollama-local:model:llama3.1:8b", "ollama-local:model:qwen3:8b"])
+            XCTAssertNil(models[0].localPerformance)
+            XCTAssertEqual(models[1].localPerformance, measurement)
+            XCTAssertNil(model.activity(for: models[0]))
+            XCTAssertEqual(model.activity(for: models[1])?.state, .working)
+            XCTAssertEqual(model.activity(for: model.snapshots[1])?.state, .working, "The card shows a busy model")
             XCTAssertNotNil(controller.onRefreshProvider)
         }
 
@@ -270,8 +274,8 @@ final class OllamaModelCellTests: XCTestCase {
         fleet.setThinkingModels([:])
         fleet.setPerformances([:])
         for controller in fleet.controllersForTesting {
-            XCTAssertEqual(controller.model.snapshots.map(\.providerID), ["ollama-local", "ollama-local", cloud.id])
-            XCTAssertTrue(controller.model.snapshots.allSatisfy { $0.localPerformance == nil })
+            XCTAssertEqual(controller.model.snapshots.map(\.providerID), ["ollama-local", cloud.id])
+            XCTAssertTrue(controller.model.snapshots.flatMap(\.modelCells).allSatisfy { $0.localPerformance == nil })
             XCTAssertTrue(controller.model.thinkingModels.isEmpty)
         }
         fleet.setSnapshots([cloud])
@@ -290,7 +294,8 @@ final class OllamaModelCellTests: XCTestCase {
     func testUnknownAndSmallMemoryReadingsAreNotModelCountsOrZeroes() throws {
         let data = Data(#"{"models":[{"name":"a"},{"name":"b","size":536870912}]}"#.utf8)
         let cells = ollamaSnapshot(try OllamaLocalUsage.parse(data)).notchSnapshots
-        XCTAssertEqual(cells.map(\.headlineText), ["—", "512 MB"])
+        XCTAssertEqual(cells.map(\.localModel?.memoryText), ["—", "512 MB"])
+        XCTAssertEqual(cells.map(\.headlineText), ["0", "0"])
         XCTAssertTrue(cells[0].hasReading)
         XCTAssertTrue(cells[0].localModel?.detail.contains("Memory unavailable") == true)
     }
@@ -332,7 +337,7 @@ final class LocalModelBrandTests: XCTestCase {
         let runtime = ollamaSnapshot(try OllamaLocalUsage.parse(data))
         let cell = try XCTUnwrap(runtime.notchSnapshots.first)
         XCTAssertEqual(runtime.glyph, .ollamaLocal)
-        XCTAssertEqual(cell.glyph, .deepseek)
+        XCTAssertEqual(cell.glyph, .ollamaLocal)
         XCTAssertEqual(cell.localModel?.brand, .deepseek)
         XCTAssertEqual(cell.providerID, "ollama-local")
         XCTAssertEqual(cell.id, "ollama-local:model:deepseek-r1:1.5b")
@@ -368,8 +373,10 @@ final class LocalModelBrandTests: XCTestCase {
 final class OllamaLocalProviderTests: XCTestCase {
     func testTransportUsesOnlyTheReadOnlyListing() async throws {
         let requested = expectation(description: "listing")
+        requested.expectedFulfillmentCount = 2
+        var paths: [String] = []
         let provider = makeProvider { request in
-            XCTAssertEqual(request.url?.path, "/api/ps")
+            paths.append(request.url?.path ?? "")
             XCTAssertEqual(request.httpMethod, "GET")
             XCTAssertNil(request.httpBody)
             XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
@@ -380,10 +387,67 @@ final class OllamaLocalProviderTests: XCTestCase {
         }
         let snapshot = try await provider.fetchSnapshot()
         await fulfillment(of: [requested], timeout: 1)
+        XCTAssertEqual(paths, ["/api/ps", "/api/tags"])
         XCTAssertEqual(snapshot.kind, .localRuntime)
         XCTAssertEqual(snapshot.status, .ok)
         XCTAssertTrue(snapshot.hasReading)
+        XCTAssertEqual(snapshot.localRuntime?.models, [])
         XCTAssertNil(provider.account())
+    }
+
+    func testLoadedModelsComeFirstAndAreNotListedTwice() async throws {
+        var paths: [String] = []
+        let tags = #"{"models":[{"name":"qwen3:8b","size":4000},{"name":"llama3","size":3000},{"name":"gemma3:4b","size":2000}]}"#
+        let provider = makeProvider { request in
+            paths.append(request.url?.path ?? "")
+            return (200, Data((request.url?.path == "/api/tags" ? tags
+                : #"{"models":[{"name":"qwen3:8b","size":5000,"size_vram":5000},{"name":"llama3:latest","size":3000}]}"#).utf8))
+        }
+        let snapshot = try await provider.fetchSnapshot()
+        XCTAssertEqual(paths, ["/api/ps", "/api/tags"])
+        XCTAssertEqual(snapshot.localRuntime?.models.map(\.name), ["llama3:latest", "qwen3:8b", "gemma3:4b"])
+        XCTAssertEqual(snapshot.localRuntime?.models.map(\.loaded), [true, true, false])
+        XCTAssertEqual(snapshot.localRuntime?.models.first { $0.name == "qwen3:8b" }?.memoryBytes, 5000)
+        XCTAssertEqual(snapshot.localRuntime?.summary, "2 models loaded")
+    }
+
+    func testIdleServerShowsEveryInstalledModel() async throws {
+        let tags = #"""
+        {"models":[
+          {"name":"qwen2.5-coder:7b","size":4683087561,"modified_at":"2026-09-01T10:00:00Z",
+           "details":{"quantization_level":"Q4_K_M","context_length":32768}},
+          {"name":"qwen3-coder:30b","size":18556700761,"modified_at":"2026-10-01T10:00:00.5-03:00",
+           "details":{"quantization_level":" Q4_K_M ","context_length":262144}}
+        ]}
+        """#
+        let provider = makeProvider { request in
+            (200, Data((request.url?.path == "/api/tags" ? tags : #"{"models":[]}"#).utf8))
+        }
+        let snapshot = try await provider.fetchSnapshot()
+        XCTAssertEqual(snapshot.localRuntime?.models.map(\.name), ["qwen2.5-coder:7b", "qwen3-coder:30b"])
+        XCTAssertEqual(snapshot.localRuntime?.models.map(\.loaded), [false, false])
+        XCTAssertEqual(snapshot.localRuntime?.summary, "Server reachable · No models loaded")
+        let model = try XCTUnwrap(snapshot.localRuntime?.models.last)
+        XCTAssertEqual(model.name, "qwen3-coder:30b")
+        XCTAssertFalse(model.loaded)
+        XCTAssertEqual(model.memoryKind, .modelSize)
+        XCTAssertEqual(model.memoryLabel, "Model size")
+        XCTAssertEqual(model.memoryBytes, 18556700761)
+        XCTAssertEqual(model.contextLength, 262144)
+        XCTAssertEqual(model.quantizationLevel, "Q4_K_M")
+        XCTAssertEqual(snapshot.notchSnapshots.count, 2)
+        XCTAssertEqual(snapshot.notchSnapshots.map(\.glyph), [.ollamaLocal, .ollamaLocal])
+    }
+
+    func testUnreadableInstalledListingKeepsTheIdleSummary() async throws {
+        for (status, body) in [(500, "{}"), (200, "not json"), (200, #"{"models":[{"name":" "}]}"#)] {
+            let provider = makeProvider { request in
+                request.url?.path == "/api/tags" ? (status, Data(body.utf8)) : (200, Data(#"{"models":[]}"#.utf8))
+            }
+            let snapshot = try await provider.fetchSnapshot()
+            XCTAssertEqual(snapshot.localRuntime?.models, [], body)
+            XCTAssertEqual(snapshot.statusMessage, "Server reachable · No models loaded", body)
+        }
     }
 
     func testTransportAndHTTPFailuresStayVisible() async {
@@ -482,7 +546,8 @@ final class OllamaLifecycleTests: XCTestCase {
         fleet.show()
         defer { fleet.stop() }
         for controller in fleet.controllersForTesting {
-            XCTAssertEqual(controller.model.snapshots.map(\.id), [qwen, cloud.id, llama])
+            XCTAssertEqual(controller.model.snapshots.map(\.id), ["ollama-local", cloud.id],
+                           "The models share one card where the first of them sits")
         }
 
         local.models.removeAll { $0.name == "qwen3:8b" }
@@ -891,7 +956,7 @@ final class OllamaRenderTests: XCTestCase {
            let expectedBrand = ProcessInfo.processInfo.environment["CODENOTCH_OLLAMA_EXPECTED_BRAND"] {
             let cell = try XCTUnwrap(snapshot.notchSnapshots.first { $0.localModel?.name == expectedName })
             XCTAssertEqual(cell.localModel?.brand?.rawValue ?? "ollama", expectedBrand)
-            XCTAssertEqual(cell.glyph, cell.localModel?.brand?.glyph ?? .ollamaLocal)
+            XCTAssertEqual(cell.glyph, .ollamaLocal)
             XCTAssertEqual(cell.providerID, "ollama-local")
         }
         for (index, cell) in snapshot.notchSnapshots.enumerated() {
@@ -932,7 +997,7 @@ final class OllamaRenderTests: XCTestCase {
                 memoryBytes: 6_442_450_944, contextLength: 8_192, quantizationLevel: nil)
         ]
         model.updateSnapshots([ollamaSnapshot(LocalRuntimeReading(models: models))])
-        XCTAssertEqual(model.snapshots.count, 2)
+        XCTAssertEqual(model.snapshots.count, 1)
         model.isExpanded = true
         model.hoveredIndex = 0
         for edge in NotchEdge.allCases {
@@ -957,7 +1022,7 @@ final class OllamaRenderTests: XCTestCase {
         model.updateSnapshots(clouds + [ollamaSnapshot(reading)])
         model.isExpanded = true
         model.screenSize = CGSize(width: 1512, height: 982)
-        XCTAssertEqual(model.snapshots.count, 6)
+        XCTAssertEqual(model.snapshots.count, 4)
         for edge in NotchEdge.allCases {
             model.edge = edge
             XCTAssertGreaterThan(model.cellSpacing, 0)
@@ -966,7 +1031,7 @@ final class OllamaRenderTests: XCTestCase {
                 XCTAssertEqual(controller.cellIndex(along: centre), index)
                 XCTAssertEqual(controller.cellIndex(along: centre + model.cellPitch / 2 - 0.01), index)
             }
-            for index in [3, 5] {
+            for index in [2, 3] {
                 model.hoveredIndex = index
                 let size = model.panelSize
                 XCTAssertLessThanOrEqual(size.width, model.screenSize.width)
@@ -1005,7 +1070,7 @@ final class OllamaRenderTests: XCTestCase {
             renderer.scale = 2
             try save(XCTUnwrap(renderer.nsImage), name: "ollama-brands-\(edge.rawValue).png")
         }
-        for cell in model.snapshots {
+        for cell in model.snapshots.flatMap(\.modelCells) {
             let renderer = ImageRenderer(content: TooltipCard(snapshot: cell, now: Date()))
             renderer.scale = 2
             try save(XCTUnwrap(renderer.nsImage),

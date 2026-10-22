@@ -18,25 +18,30 @@ final class LMStudioViewTests: XCTestCase {
                                 status: .ok, windows: [], kind: .localRuntime, localRuntime: try OllamaLocalUsage.parse(data))
     }
 
+    private func neighbor() -> ProviderSnapshot {
+        ProviderSnapshot(id: "lmstudio-neighbor", displayName: "Neighbor", glyph: .third,
+                         fidelity: .manual, status: .ok, windows: [])
+    }
+
     func testLMStudioShowsSpeedWithoutTheOllamaCaptureSwitch() throws {
         let vm = NotchViewModel()
         vm.updateSnapshots([try ollama(["qwen3:latest"]), try runtime()])
         XCTAssertEqual(vm.snapshots.map(\.showsLocalPerformance), [false, true, true])
-        XCTAssertEqual(vm.snapshots[0].headlineText, expectedGigabytes(4.5))
+        XCTAssertEqual(vm.snapshots[0].headlineText, "0", "Ollama counts its logged tokens; none logged is 0")
         XCTAssertEqual(vm.snapshots[1].headlineText, "— tok/s", "measured by the runtime, nothing measured yet")
 
         let speed = try XCTUnwrap(LocalModelPerformance(outputTokens: 300, tokensPerSecond: 17.9))
         vm.updatePerformances([qwen: speed], source: "lmstudio")
         XCTAssertEqual(vm.snapshots.first { $0.id == qwen }?.localPerformance, speed)
-        XCTAssertNil(vm.snapshots[0].localPerformance, "keyed per source; an Ollama cell never reads LM Studio's")
+        XCTAssertNil(vm.snapshots[0].localModelCells[0].localPerformance, "keyed per source; an Ollama cell never reads LM Studio's")
 
         // Ollama's relay coming and going leaves LM Studio's reading alone.
         let relayed = try XCTUnwrap(LocalModelPerformance(outputTokens: 30, durationNanoseconds: 1_000_000_000))
         vm.setLocalMetricsEnabled(true)
         vm.updatePerformances(["qwen3:latest": relayed])
-        XCTAssertEqual(vm.snapshots[0].localPerformance, relayed)
+        XCTAssertEqual(vm.snapshots[0].localModelCells[0].localPerformance, relayed)
         vm.setLocalMetricsEnabled(false)
-        XCTAssertNil(vm.snapshots[0].localPerformance)
+        XCTAssertNil(vm.snapshots[0].localModelCells[0].localPerformance)
         XCTAssertEqual(vm.snapshots.first { $0.id == qwen }?.localPerformance, speed)
         XCTAssertEqual(vm.snapshots.first { $0.id == qwen }?.headlineText, "\(17.9.formatted(.number.precision(.fractionLength(0...1)))) tok/s")
     }
@@ -102,7 +107,7 @@ final class LMStudioViewTests: XCTestCase {
     func testLedgerRowsGrowTheCardAndStillFitEveryEdge() throws {
         let vm = NotchViewModel()
         vm.now = LMStudioLogFixtures.date(2026, 9, 10, 12, 0, 0)
-        vm.updateSnapshots([Fixtures.snapshots()[0], try runtime()])
+        vm.updateSnapshots([neighbor(), try runtime()])
         var ledger = LocalTokenLedger()
         ledger.record(LocalPrediction(instance: "qwen3.8-27b", at: vm.now.addingTimeInterval(-5), inputTokens: 20_000,
                                       outputTokens: 1_200, reasoningTokens: 600, tokensPerSecond: 24.1,
@@ -158,7 +163,7 @@ final class LMStudioViewTests: XCTestCase {
         for controller in fleet.controllersForTesting {
             let model = controller.model
             XCTAssertEqual(model.snapshots.first { $0.id == qwen }?.localPerformance, speed)
-            XCTAssertEqual(model.snapshots.last?.localPerformance, relayed)
+            XCTAssertEqual(model.snapshots.last?.localModelCells.first?.localPerformance, relayed)
             XCTAssertEqual(model.activity(for: model.snapshots.first { $0.id == qwen }!)?.sessions.first?.name, "Generating")
             XCTAssertNotNil(model.snapshots.first { $0.id == qwen }?.localLedger)
         }

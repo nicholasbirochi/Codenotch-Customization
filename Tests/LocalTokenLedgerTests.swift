@@ -51,7 +51,7 @@ final class LocalTokenLedgerTests: XCTestCase {
         XCTAssertNil(ledger.summary(for: "qwen", now: morning))
         ledger.record(prediction(at: yesterday, input: 1000, output: 50))
         ledger.record(prediction(at: morning, input: 100, output: 300, reasoning: 200, drafts: (492, 176)))
-        ledger.record(prediction(at: night, input: 50, output: 100, reasoning: nil, drafts: (8, 8)))
+        ledger.record(prediction(at: night, input: 50, output: 100, reasoning: 0, drafts: (8, 8)))
         ledger.record(prediction("other", at: night, input: 7, output: 7))
 
         let summary = try XCTUnwrap(ledger.summary(for: "qwen", now: night))
@@ -95,6 +95,15 @@ final class LocalTokenLedgerTests: XCTestCase {
         XCTAssertNil(summary.contextFraction(contextLength: 4096))
     }
 
+    func testMissingCountsAreNotPresentedAsMeasuredZero() {
+        var totals = LocalTokenLedger.Totals()
+        totals.add(prediction(at: Date(), input: nil, output: 10, reasoning: nil))
+        XCTAssertNil(totals.reasoningShare)
+        XCTAssertEqual(LocalTokenLedger.Summary(today: totals, last: nil).tokensTodayText, "— in · 10 out")
+        totals.add(prediction(at: Date(), input: 10, output: 10, reasoning: 5))
+        XCTAssertNil(totals.reasoningShare, "A partial numerator cannot describe all output")
+    }
+
     func testTheContextFractionIsTheLastPromptAgainstTheLoadedWindow() throws {
         let summary = LocalTokenLedger.Summary(today: LocalTokenLedger.Totals(),
                                                last: prediction(at: Date(), input: 1024, output: 1))
@@ -132,6 +141,22 @@ final class LocalTokenLedgerTests: XCTestCase {
         XCTAssertNil(ledger.totals(for: "qwen", on: ancient))
         XCTAssertNotNil(ledger.totals(for: "qwen", on: recent))
         XCTAssertEqual(ledger.days["qwen"]?.count, 2)
+    }
+
+    func testTheYearViewReadsDaysOlderThanTheHourlyCells() throws {
+        let today = LMStudioLogFixtures.date(2026, 9, 10, 12, 0, 0)
+        let february = LMStudioLogFixtures.date(2026, 2, 3, 9, 0, 0)
+        var ledger = LocalTokenLedger(calendar: calendar)
+        ledger.record(prediction(at: february))
+        ledger.record(prediction(at: today))
+        XCTAssertNil(ledger.hours["qwen"]?.keys.first { $0 < today.addingTimeInterval(-86_400) },
+                     "hour cells age out after \(LocalTokenLedger.hourRetentionDays) days")
+        let history = try XCTUnwrap(ledger.history(for: "qwen", now: today))
+        let year = history.slice(.year)
+        XCTAssertEqual(year.buckets.count, 12)
+        XCTAssertEqual(year.total, history.slice(.today).total * 2)
+        XCTAssertGreaterThan(year.buckets[1].tokens, 0, "February keeps its day")
+        XCTAssertEqual(history.slice(.month).total, history.slice(.today).total, "no double count today")
     }
 }
 

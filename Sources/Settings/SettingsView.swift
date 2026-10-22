@@ -349,7 +349,7 @@ private struct SettingsQuitRow: View {
                 Image(systemName: "power")
                     .font(.system(size: 12, weight: .regular))
                     .frame(width: 18)
-                Text(L10n.t("Quit Codenotch"))
+                Text(L10n.t("Quit Codenotch").replacingOccurrences(of: "Codenotch", with: "Codenotch Dev"))
                     .font(.system(size: 13, weight: .regular))
             }
             .foregroundStyle(isHovered ? Self.hoverRed : Color.white.opacity(0.55))
@@ -588,7 +588,7 @@ struct SettingsView: View {
                     .resizable()
                     .interpolation(.high)
                     .frame(width: 22, height: 22)
-                Text("Codenotch")
+                Text("Codenotch Dev")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.white)
             }
@@ -627,7 +627,7 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 6) {
                 SettingsQuitRow(quit: quit)
                 HStack(spacing: 8) {
-                    Text("Codenotch \(updater.currentVersion)")
+                    Text("Codenotch Dev \(updater.currentVersion)")
                         .font(.system(size: 11, weight: .regular))
                         .foregroundStyle(.white.opacity(0.32))
                     Spacer(minLength: 0)
@@ -1337,7 +1337,8 @@ struct SettingsView: View {
             // No title on the group: the pane's own header above already
             // says "General", and repeating it here would say it twice.
             Section {
-                Toggle(L10n.t("Open Codenotch at login"), isOn: $preferences.launchAtLogin)
+                Toggle(L10n.t("Open Codenotch at login").replacingOccurrences(of: "Codenotch", with: "Codenotch Dev"),
+                       isOn: $preferences.launchAtLogin)
                 if let problem = preferences.launchAtLoginProblem {
                     Text(problem)
                         .font(.caption)
@@ -1345,43 +1346,45 @@ struct SettingsView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
-                Toggle(L10n.t("Check for updates automatically"), isOn: Binding(
-                    get: { updater.automatic },
-                    set: { updater.automatic = $0 }
-                ))
+                if updater.supportsAutomaticUpdates {
+                    Toggle(L10n.t("Check for updates automatically"), isOn: Binding(
+                        get: { updater.automatic },
+                        set: { updater.automatic = $0 }
+                    ))
 
-                HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    // Disclosed rather than merely silent. An app that updates
-                    // itself unprompted *and* reads other apps' credentials is
-                    // exactly the shape security tooling flags; saying so, with
-                    // a way to switch it off, is the difference between a
-                    // background updater and something that looks like it is
-                    // hiding.
-                    Text(L10n.t("Version \(updater.currentVersion). New versions are offered in the notch, and install when you choose Update."))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Spacer(minLength: 0)
-                    // The card a new version brings up in the notch, played
-                    // through for a version that is not there.
-                    Button(L10n.t("Preview")) { updater.preview() }
-                        .controlSize(.small)
-                        .help(L10n.t("Show the update card in the notch, with nothing downloaded"))
-                    Button(L10n.t("Check now")) { updater.checkNow() }
-                        .controlSize(.small)
-                }
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        // Disclosed rather than merely silent. An app that updates
+                        // itself unprompted *and* reads other apps' credentials is
+                        // exactly the shape security tooling flags; saying so, with
+                        // a way to switch it off, is the difference between a
+                        // background updater and something that looks like it is
+                        // hiding.
+                        Text(L10n.t("Version \(updater.currentVersion). New versions are offered in the notch, and install when you choose Update."))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 0)
+                        // The card a new version brings up in the notch, played
+                        // through for a version that is not there.
+                        Button(L10n.t("Preview")) { updater.preview() }
+                            .controlSize(.small)
+                            .help(L10n.t("Show the update card in the notch, with nothing downloaded"))
+                        Button(L10n.t("Check now")) { updater.checkNow() }
+                            .controlSize(.small)
+                    }
 
-                // Says what happened, where the user is already looking.
-                // Sparkle's own answer to a failed check is a modal reading
-                // "an error occurred in retrieving update information", which
-                // names no cause and offers nothing to do about it.
-                if let message = updater.outcome.message {
-                    Text(message)
-                        .font(.caption)
-                        .foregroundStyle(
-                            updater.outcome == .unreachable ? .orange : .secondary
-                        )
-                        .fixedSize(horizontal: false, vertical: true)
+                    // Says what happened, where the user is already looking.
+                    // Sparkle's own answer to a failed check is a modal reading
+                    // "an error occurred in retrieving update information", which
+                    // names no cause and offers nothing to do about it.
+                    if let message = updater.outcome.message {
+                        Text(message)
+                            .font(.caption)
+                            .foregroundStyle(
+                                updater.outcome == .unreachable ? .orange : .secondary
+                            )
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
             }
 
@@ -2086,6 +2089,21 @@ private struct AccountRow: View {
             // MiniMax is signed into in Codenotch, or by a Coding Plan key
             // pasted here. The region is which console that key belongs to.
             // Stored in the keychain on Save, the same way Ollama's is.
+            if provider.id == "qoder" {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(L10n.t("Region")).foregroundStyle(.secondary)
+                    Picker(selection: $preferences.qoderRegion) {
+                        Text(L10n.t("International")).tag(Sites.QoderRegion.global)
+                        Text(L10n.t("China mainland")).tag(Sites.QoderRegion.china)
+                    } label: { EmptyView() }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .frame(width: 160)
+                    Text(L10n.t("Sign in to Qoder in Codenotch. Each region has a separate account and session. Website verification may be required."))
+                        .foregroundStyle(.tertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
             if provider.id == "minimax" {
                 minimaxEntry
             }

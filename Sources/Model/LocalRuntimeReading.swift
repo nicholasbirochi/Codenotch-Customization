@@ -22,10 +22,11 @@ struct LocalRuntimeReading: Equatable {
         /// instances separately. Consulted only for the brand mark: an LM
         /// Studio instance can be given any identifier at load time.
         let modelKey: String?
+        let loaded: Bool
 
         init(name: String, memoryBytes: Int64?, contextLength: Int?, quantizationLevel: String?,
              gpuMemoryBytes: Int64? = nil, expiresAt: Date? = nil,
-             memoryKind: MemoryKind = .allocation, modelKey: String? = nil) {
+             memoryKind: MemoryKind = .allocation, modelKey: String? = nil, loaded: Bool = true) {
             self.name = name
             self.memoryBytes = memoryBytes
             self.contextLength = contextLength
@@ -34,6 +35,7 @@ struct LocalRuntimeReading: Equatable {
             self.expiresAt = expiresAt
             self.memoryKind = memoryKind
             self.modelKey = modelKey
+            self.loaded = loaded
         }
 
         var displayedMemoryBytes: Int64? {
@@ -95,8 +97,10 @@ struct LocalRuntimeReading: Equatable {
         self.measuresSpeed = measuresSpeed
     }
 
+    /// Installed models listed while idle are not counted as loaded.
     var summary: String {
-        models.isEmpty ? "Server reachable · No models loaded"
-            : "\(models.count) \(models.count == 1 ? "model" : "models") loaded"
+        let loaded = models.filter(\.loaded).count
+        return loaded == 0 ? "Server reachable · No models loaded"
+            : "\(loaded) \(loaded == 1 ? "model" : "models") loaded"
     }
 }

@@ -195,6 +195,7 @@ struct NotchRootView: View {
         .tint(model.accentColor.color)
         .environment(\.codenotchAccentColor, model.accentColor.color)
         .environment(\.notchSurfaceStyle, model.surfaceStyle)
+        .environment(\.tooltipClose, model.onCloseTooltip)
         .environment(\.tooltipSecondaryInk, TooltipGlassContrast.secondaryInk(
             surfaceStyle: model.surfaceStyle,
             colorScheme: colorScheme,
@@ -584,14 +585,17 @@ struct NotchRootView: View {
             groupCount: snapshot.windowGroupCount,
             moneyWindowCount: snapshot.windows.filter { $0.money != nil }.count,
             usageDetailGroupCount: snapshot.usageDetail?.visibleGroups.count ?? 0,
-            sessionCount: snapshot.localModel == nil ? (model.activity(for: snapshot.id)?.sessions.count ?? 0) : 0,
+            sessionCount: snapshot.isLocalCell ? 0 : (model.activity(for: snapshot.id)?.sessions.count ?? 0),
             sessionCap: model.sessionCap,
             statusMessage: snapshot.statusMessage,
             blockMessage: snapshot.block?.summary(now: model.now),
             hasTokenUsage: snapshot.tokenUsage != nil,
+                hasDailyTokenUsage: snapshot.dailyTokenUsage != nil,
+            observedHistory: snapshot.observedHistory,
             hasPlan: snapshot.plan != nil,
             hasResetCredits: snapshot.hasAvailableResetCredits,
             localModelName: snapshot.localModel?.name,
+            localModelGroupNames: snapshot.localModelGroupNames,
             showsLocalPerformance: snapshot.showsLocalPerformance,
             localLedgerRows: snapshot.localLedgerRowCount,
             compactRowCount: snapshot.compactRowCount,

@@ -15,18 +15,22 @@ struct CostSection: View {
     /// How many lines the card must reserve — read by the height math, so it
     /// has to agree with what `body` draws.
     @MainActor static func rowCount(for snapshot: ProviderSnapshot) -> Int {
-        guard let m = CostModels.model(for: snapshot.id), m.state == .ready else { return 0 }
-        return min(m.rows.count, maxRows)
+        guard let m = CostModels.model(for: snapshot.id) else { return 0 }
+        return rowCount(state: m.state, projects: m.rows.count)
+    }
+
+    static func rowCount(state: CostModel.State, projects: Int) -> Int {
+        state == .unavailable ? 0 : max(1, min(projects, maxRows))
     }
 
     private var shown: [ProjectCost] { Array(model.rows.prefix(min(rows, Self.maxRows))) }
 
     /// The ranges the card offers: the day, the allowance window (a week, or
-    /// a credit cycle) and the month.
-    static let tabs: [CostRange] = [.today, .weekly, .month]
+    /// a credit cycle), the month and the year.
+    static let tabs: [CostRange] = [.today, .weekly, .month, .year]
 
     private func title(_ range: CostRange) -> String {
-        if range == .weekly, model.creditBacked { return L10n.t("Cycle") }
+        if range == .weekly, model.creditBacked { return "Cycle" }
         return range.shortTitle
     }
 
@@ -47,6 +51,11 @@ struct CostSection: View {
             }
             .frame(height: NotchLayout.cardBodyLineHeight)
             .padding(.top, NotchLayout.blockSpacing)
+            if shown.isEmpty {
+                Text(L10n.t("No observed activity in period"))
+                    .font(Typography.cardBody).foregroundStyle(Palette.textSecondary)
+                    .frame(height: NotchLayout.cardBodyLineHeight)
+            }
             ForEach(shown) { row in
                 HStack(spacing: Design.px(12)) {
                     Text(row.displayName)
@@ -73,7 +82,7 @@ struct CostSection: View {
             // Opens on the allowance window when the account has one, else the
             // month; the tabs take it from there.
             guard !Self.tabs.contains(model.range) else { return }
-            model.range = model.quotaBacked ? .weekly : .month
+            model.range = .month
         }
     }
 }

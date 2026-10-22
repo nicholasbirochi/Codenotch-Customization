@@ -333,7 +333,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             empty.isEnabled = false
             menu.addItem(empty)
         } else {
-            let cells = cells()
+            let cells = cells().flatMap(\.modelCells)
             for snapshot in snapshots {
                 menu.addItem(headerItem(for: snapshot, now: now))
                 for line in Self.detailLines(for: snapshot, cells: cells, activity: activity,
@@ -374,7 +374,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         ).target = self
         menu.addItem(.separator())
         menu.addItem(
-            withTitle: L10n.t("Quit Codenotch"), action: #selector(quit), keyEquivalent: "q"
+            withTitle: L10n.t("Quit Codenotch").replacingOccurrences(of: "Codenotch", with: "Codenotch Dev"),
+            action: #selector(quit), keyEquivalent: "q"
         ).target = self
     }
 
@@ -481,7 +482,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     /// in the order the eye wants them.
     static func modelLine(for cell: ProviderSnapshot, activity: ActivitySummary?) -> String {
         guard let model = cell.localModel else { return cell.headlineText }
-        var parts = [cell.headlineText]
+        var parts = [cell.periodTokensText(cell.observedPeriod) ?? cell.headlineText]
         if let activity, activity.state == .working {
             parts.append(activity.note ?? activity.sessions.first?.name ?? L10n.t("Thinking"))
         }

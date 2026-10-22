@@ -457,6 +457,51 @@ final class CodexUsageTests: XCTestCase {
         XCTAssertEqual(try CodexUsage.resetCredits(from: Data("[]".utf8)).credits, [])
     }
 
+    func testChartPeriodsGiveSevenDaysThirtyDaysOrTwelveMonths() {
+        let usage = CodexTokenUsage(dailyUsageBuckets: [
+            .init(startDate: "2025-09-30", tokens: 1),    // thirteen months back: outside
+            .init(startDate: "2025-10-01", tokens: 10),
+            .init(startDate: "2025-10-20", tokens: 20),
+            .init(startDate: "2026-08-12", tokens: 100),
+            .init(startDate: "2026-09-03", tokens: 200),
+            .init(startDate: "2026-09-08", tokens: 300)
+        ])
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let now = calendar.date(from: DateComponents(year: 2026, month: 9, day: 9, hour: 15))!
+
+        let today = usage.buckets(for: .today, now: now, calendar: calendar)
+        XCTAssertEqual(today.map(\.startDate), ["2026-09-09"])
+        XCTAssertEqual(usage.usage(in: .today, now: now, calendar: calendar),
+                       usage.usageToday(now: now, calendar: calendar) ?? 0)
+
+        let week = usage.buckets(for: .week, now: now, calendar: calendar)
+        XCTAssertEqual(week.count, 7)
+        XCTAssertEqual(week.first?.startDate, "2026-09-03")
+        XCTAssertEqual(week.last?.startDate, "2026-09-09")
+        XCTAssertEqual(usage.usage(in: .week, now: now, calendar: calendar), 500)
+
+        XCTAssertEqual(usage.buckets(for: .month, now: now, calendar: calendar),
+                       usage.last30Days(now: now, calendar: calendar))
+        XCTAssertEqual(usage.usage(in: .month, now: now, calendar: calendar), 600)
+
+        let year = usage.buckets(for: .year, now: now, calendar: calendar)
+        XCTAssertEqual(year.map(\.startDate).first, "2025-10")
+        XCTAssertEqual(year.map(\.startDate).last, "2026-09")
+        XCTAssertEqual(year.count, 12)
+        XCTAssertEqual(year.first?.tokens, 30)
+        XCTAssertEqual(year.last?.tokens, 500)
+        XCTAssertEqual(usage.usage(in: .year, now: now, calendar: calendar), 630)
+    }
+
+    func testChartPeriodIsRememberedPerCard() {
+        XCTAssertEqual(TokenChartPeriod.allCases, [.today, .week, .month, .year])
+        XCTAssertNotEqual(TokenChartPeriod.preferenceKey("claude"),
+                          TokenChartPeriod.preferenceKey("codex"))
+        XCTAssertNotEqual(TokenChartPeriod.preferenceKey("codex"),
+                          UsageHistoryPeriod.preferenceKey("codex"))
+    }
+
     func testAccountUsageCardGetsRoomForTheActivitySection() {
         let plain = NotchLayout.cardHeight(windowCount: 2)
         let withTokens = NotchLayout.cardHeight(windowCount: 2, hasTokenUsage: true)

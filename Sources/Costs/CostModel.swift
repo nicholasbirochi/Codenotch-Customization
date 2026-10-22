@@ -39,21 +39,22 @@ final class CostModel: ObservableObject {
     /// Which range the list is showing. Persisted, like the expanded state.
     @Published var range: CostRange {
         didSet {
-            UserDefaults.standard.set(range.rawValue, forKey: Self.rangeKey)
+            UserDefaults.standard.set(range.rawValue, forKey: rangeKey)
             reload()
         }
     }
 
     private static let expandedKey = "costExpanded"
-    private static let rangeKey = "costRange"
+    private var rangeKey: String { "costRange.\(account.id)" }
+    private var reloadGeneration = 0
     private let store: CostStore?
     private let indexer: CostIndexer?
 
     init(account: CostAccount) {
         self.account = account
         isExpanded = UserDefaults.standard.bool(forKey: Self.expandedKey)
-        let saved = CostRange(rawValue: UserDefaults.standard.string(forKey: Self.rangeKey) ?? "") ?? .session
-        range = saved == .allTime ? .month : saved
+        let saved = CostRange(rawValue: UserDefaults.standard.string(forKey: "costRange.\(account.id)") ?? "")
+        range = saved.flatMap { CostSection.tabs.contains($0) ? $0 : nil } ?? .month
 
         // One database and one transcript watcher per account; the default
         // account keeps the original file name so history carries over.
@@ -115,6 +116,8 @@ final class CostModel: ObservableObject {
 
     func reload() {
         guard let store else { return }
+        reloadGeneration += 1
+        let generation = reloadGeneration
         let range = (quotaBacked || self.range.window == nil) ? self.range : .month
         let pricer = PriceTable.shared.pricer
         let account = self.account
@@ -175,6 +178,7 @@ final class CostModel: ObservableObject {
             let done = fresh.presentable()
             let usage = store.tokenUsage()
             await MainActor.run {
+                guard self.reloadGeneration == generation else { return }
                 self.rows = done
                 self.state = done.isEmpty ? .waiting : .ready
                 if self.tokenUsage != usage { self.tokenUsage = usage }

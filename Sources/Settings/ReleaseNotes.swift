@@ -32,6 +32,40 @@ enum ReleaseNotes {
     static var all: [ReleaseNote] {
         [
             ReleaseNote(
+                version: "1.22.1",
+                headline: L10n.t("Codenotch Dev: observed history for OpenCode and local models."),
+                changes: [
+                    .init(title: L10n.t("Today, Week and Month stay visible"),
+                          detail: L10n.t("Calendar periods, project shares from session metadata, and empty states that keep the controls.")),
+                    .init(title: L10n.t("Separate Ollama model histories"),
+                          detail: L10n.t("The optional local relay retains counts and last-response timings without storing prompt or reply text.")),
+                    .init(title: L10n.t("Copilot quotas preserved"),
+                          detail: L10n.t("Chat, completions and premium quotas keep their own readings. Unsupported history is marked unavailable."))
+                ]
+            ),
+            ReleaseNote(
+                version: "1.22.0",
+                headline: L10n.t("Qoder's credits, more than one Command Code account, and DeepSeek's balance from the wallet that has one."),
+                changes: [
+                    ReleaseNote.Change(
+                        title: L10n.t("Qoder"),
+                        detail: L10n.t("A ring for your Qoder credits, international or China mainland. Sign in once inside Codenotch; nothing is copied from your browser.")
+                    ),
+                    ReleaseNote.Change(
+                        title: L10n.t("More than one Command Code account"),
+                        detail: L10n.t("Each ~/.commandcode-name folder signed in with Command Code is its own ring, the way Claude and Codex profiles already are.")
+                    ),
+                    ReleaseNote.Change(
+                        title: L10n.t("DeepSeek's balance from the funded wallet"),
+                        detail: L10n.t("With more than one currency listed, the balance comes from the wallet that holds money rather than the first one named.")
+                    ),
+                    ReleaseNote.Change(
+                        title: L10n.t("Українська, up to date"),
+                        detail: L10n.t("Every string this version shows.")
+                    ),
+                ]
+            ),
+            ReleaseNote(
                 version: "1.21.0",
                 headline: L10n.t("Custom endpoints speak Anthropic and Gemini, llama.cpp shows its speed, and Antigravity reads without the IDE open."),
                 changes: [

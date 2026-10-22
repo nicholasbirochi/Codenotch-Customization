@@ -473,6 +473,10 @@ final class Preferences: ObservableObject {
         }
     }
 
+    @Published var qoderRegion: Sites.QoderRegion {
+        didSet { defaults.set(qoderRegion.rawValue, forKey: Keys.qoderRegion) }
+    }
+
     /// Which MiniMax console the Coding Plan is read from.
     ///
     /// International and China mainland are different hosts, and a key issued
@@ -566,6 +570,7 @@ final class Preferences: ObservableObject {
         /// A new key, so there is nothing under the old app name to migrate.
         static let geminiAPIMonthlyTokenBudget = "geminiAPIMonthlyTokenBudget"
         static let minimaxRegion = "minimaxRegion"
+        static let qoderRegion = "qoderRegion"
         static let antigravityHeadlineLimit = "antigravityHeadlineLimit"
         static let antigravityHeadlineModel = "antigravityHeadlineModel"
         static let deepSeekPricingEnabled = "deepSeekPricingEnabled"
@@ -813,11 +818,10 @@ final class Preferences: ObservableObject {
         // Absent means the fold that has shipped since full-screen detection
         // exists — the setting silences it, it does not introduce it.
         self.foldsForFullScreen = defaults.object(forKey: Keys.foldsForFullScreen) as? Bool ?? true
-        // Absent means never chosen. The Dock is the default because it is the
-        // findable one — a new user who cannot see the app anywhere has no way
-        // to learn it is running.
+        // Absent means never chosen. This build lives in the menu bar by
+        // default, without a Dock tile.
         self.appPresence = defaults.string(forKey: Keys.presence)
-            .flatMap(AppPresence.init(rawValue:)) ?? .dock
+            .flatMap(AppPresence.init(rawValue:)) ?? .menuBar
         // The notch, because that is what every earlier version did; a banner
         // is the choice of someone who found the notch too quiet.
         self.notificationChannel = defaults.string(forKey: Keys.notificationChannel)
@@ -930,6 +934,7 @@ final class Preferences: ObservableObject {
             ?? SessionChime.defaultBlocked
         self.geminiAPIMonthlyTokenBudget = Self.storedGeminiAPIMonthlyTokenBudget(defaults: defaults)
         self.minimaxRegion = Self.storedMinimaxRegion(defaults: defaults)
+        self.qoderRegion = Sites.QoderRegion(rawValue: defaults.string(forKey: Keys.qoderRegion) ?? "") ?? .global
         if let data = defaults.data(forKey: Keys.customEndpoints),
            let list = try? JSONDecoder().decode([CustomEndpoint].self, from: data) {
             self.customEndpoints = Self.movingLegacyKeysToKeychain(list, defaults: defaults)
@@ -1111,6 +1116,13 @@ final class Preferences: ObservableObject {
             let novel = discovered.subtracting(seenProviders)
             for id in novel where Self.isDefaultOnFamily(id) {
                 connectedProviders.insert(id)
+            }
+            if novel.contains("opencode-all"), connectedProviders.contains("nvidia-nim") {
+                connectedProviders.insert("opencode-all")
+                if !providerOrder.isEmpty {
+                    providerOrder.insert("opencode-all",
+                        at: providerOrder.firstIndex(of: "nvidia-nim") ?? providerOrder.endIndex)
+                }
             }
             seenProviders.formUnion(discovered)
             return

@@ -289,6 +289,7 @@ private struct TooltipHeader<Mark: View>: View {
     var note: String?
     @ViewBuilder let mark: Mark
     @Environment(\.tooltipSecondaryInk) private var secondaryInk
+    @Environment(\.tooltipClose) private var close
 
     var body: some View {
         HStack(alignment: .center, spacing: NotchLayout.headerGap) {
@@ -314,6 +315,20 @@ private struct TooltipHeader<Mark: View>: View {
                         .foregroundStyle(secondaryInk)
                         .lineLimit(1)
                 }
+            }
+            if let close {
+                // At the end of the header's own line, so it covers nothing,
+                // and drawn like the × on the reset card.
+                Spacer(minLength: 0)
+                Button(action: close) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(secondaryInk)
+                        .frame(width: 16, height: 16)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(L10n.t("Close"))
             }
         }
     }
@@ -615,7 +630,8 @@ private struct ProviderTooltip: View {
                           ? L10n.t("\(snapshot.localModel?.brand?.displayName ?? snapshot.displayName) · Local")
                           : L10n.t("\(snapshot.displayName) Usage"),
                           subtitle: snapshot.plan,
-                          note: activityNote ?? (snapshot.localModel?.brand != nil ? snapshot.displayName : readingAge)) {
+                          note: activityNote ?? (snapshot.isLocalModelGroup ? nil
+                                : snapshot.localModel?.brand != nil ? snapshot.displayName : readingAge)) {
                 ProviderGlyphView(glyph: snapshot.glyph, customIconFilename: snapshot.customIconFilename)
                     .foregroundStyle(Palette.textPrimary)
             }
@@ -631,6 +647,8 @@ private struct ProviderTooltip: View {
                     .foregroundStyle(secondaryInk)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.top, NotchLayout.headerToBlock)
+            } else if snapshot.isLocalModelGroup {
+                LocalModelGroupDetails(models: snapshot.localModelCells, now: now)
             } else if let localModel = snapshot.localModel {
                 RuntimeModelDetails(model: localModel, performance: snapshot.localPerformance,
                                     showsPerformance: snapshot.showsLocalPerformance,
@@ -673,6 +691,121 @@ private struct ProviderTooltip: View {
     }
 }
 
+/// One block per model, smallest first, split by a rule.
+private struct LocalModelGroupDetails: View {
+    let models: [ProviderSnapshot]
+    let now: Date
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(models.enumerated()), id: \.element.id) { index, cell in
+                // No rule between models: the chart's baseline and its dates
+                // already close each block, as on the other usage cards.
+                LocalModelBlock(cell: cell, now: now)
+                    .padding(.top, index == 0 ? NotchLayout.headerToBlock : NotchLayout.blockSpacing)
+            }
+        }
+        .font(Typography.cardBody)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// The runtime's mark beside the model's name; its calls, input and output
+/// over the period picked under the rule; and that period's tokens as bars.
+/// Each model keeps its own period. No speed here — the card is about volume,
+/// and an unrecorded model reads 0.
+private struct LocalModelBlock: View {
+    let cell: ProviderSnapshot
+    let now: Date
+    @AppStorage private var periodRaw: String
+
+    init(cell: ProviderSnapshot, now: Date) {
+        self.cell = cell
+        self.now = now
+        _periodRaw = AppStorage(wrappedValue: UsageHistoryPeriod.month.rawValue,
+                                UsageHistoryPeriod.preferenceKey(cell.id))
+    }
+
+    private var period: UsageHistoryPeriod { UsageHistoryPeriod(rawValue: periodRaw) ?? .month }
+
+    /// Nothing logged still draws the period's empty bars, not a made-up shape.
+    private var slice: ObservedUsageHistory.Slice {
+        let history = cell.observedHistory.flatMap { $0.unavailable ? nil : $0 }
+            ?? ObservedUsageHistory.aggregate([], now: now)
+        return history.slice(period)
+    }
+
+    /// English in every language, as asked: Calls, Input, Output.
+    private func row(_ name: String, _ value: Int) -> some View {
+        SplitRow(leading: name, trailing: LimitWindow.compact(value))
+            .frame(height: NotchLayout.cardBodyLineHeight)
+    }
+
+    /// The first and last bar's date under the chart, like the other cards.
+    private func stamp(_ date: Date?, hourly: Bool) -> String {
+        period.stamp(date, hourly: hourly)
+    }
+
+    var body: some View {
+        let name = cell.localModel?.name ?? cell.displayName
+        let split = cell.periodTokenSplit(period) ?? (0, 0)
+        let slice = slice
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: NotchLayout.sessionRowGap) {
+                HStack(spacing: Design.px(10)) {
+                    ProviderGlyphView(glyph: cell.glyph, customIconFilename: cell.customIconFilename,
+                                      size: NotchLayout.cardBodyLineHeight)
+                        .foregroundStyle(Palette.textPrimary)
+                    Text(name)
+                        .foregroundStyle(Palette.textPrimary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .accessibilityLabel(name)
+                }
+                .frame(height: NotchLayout.cardBodyLineHeight)
+                row("Calls", cell.periodCalls(period) ?? 0)
+                row("Input", split.input)
+                row("Output", split.output)
+            }
+            Rectangle()
+                .fill(Palette.ringTrack)
+                .frame(height: NotchLayout.hairline)
+                .padding(.vertical, NotchLayout.codexUsageRowGap)
+            UsagePeriodPicker(period: period) { periodRaw = $0.rawValue }
+            CodexDailyUsageChart(
+                buckets: slice.buckets.map { .init(startDate: String($0.at.timeIntervalSince1970), tokens: $0.tokens) },
+                maximum: max(1, slice.peak), height: NotchLayout.localModelChartHeight)
+                .padding(.top, NotchLayout.codexChartTop)
+                .accessibilityLabel(L10n.t("Observed token history"))
+                .accessibilityValue(LimitWindow.compact(slice.total))
+            SplitRow(leading: stamp(slice.buckets.first?.at, hourly: slice.hourly),
+                     trailing: stamp(slice.buckets.last?.at, hourly: slice.hourly))
+                .frame(height: NotchLayout.cardBodyLineHeight)
+        }
+    }
+}
+
+/// Today, Week, Month, Year — the picker every usage chart sits under.
+struct UsagePeriodPicker<Period: PeriodOption>: View {
+    let period: Period
+    let select: (Period) -> Void
+    @Environment(\.tooltipSecondaryInk) private var secondaryInk
+
+    var body: some View {
+        HStack(spacing: Design.px(18)) {
+            ForEach(Period.allCases) { option in
+                Button { select(option) } label: {
+                    Text(option.title)
+                        .font(option == period ? Typography.cardBody.weight(.semibold) : Typography.cardBody)
+                        .foregroundStyle(option == period ? Palette.textPrimary : secondaryInk)
+                }.buttonStyle(.plain)
+                    .accessibilityAddTraits(option == period ? .isSelected : [])
+            }
+            Spacer(minLength: 0)
+        }.frame(height: NotchLayout.cardBodyLineHeight)
+    }
+}
+
 private struct RuntimeModelDetails: View {
     let model: LocalRuntimeReading.Model
     let performance: LocalModelPerformance?
@@ -700,7 +833,7 @@ private struct RuntimeModelDetails: View {
                 SplitRow(leading: model.memoryLabel, trailing: model.displayedMemoryBytes == nil ? "Unavailable" : model.memoryText)
                 SplitRow(leading: "Context limit", trailing: model.contextText)
                 SplitRow(leading: "Quantization", trailing: model.quantizationText)
-                SplitRow(leading: "Unloads", trailing: model.unloadText(now: now))
+                SplitRow(leading: model.loaded ? "Unloads" : L10n.t("State"), trailing: model.loaded ? model.unloadText(now: now) : L10n.t("Not loaded"))
                 if showsPerformance {
                     SplitRow(leading: "Measured", trailing: performance.map { ElapsedCopy.ago(since: $0.measuredAt, now: now) } ?? "—")
                 }
@@ -710,6 +843,12 @@ private struct RuntimeModelDetails: View {
                     SplitRow(leading: "Requests today", trailing: ledger.requestsTodayText)
                     SplitRow(leading: "Reasoning share", trailing: ledger.reasoningShareText)
                     SplitRow(leading: "Draft accepted", trailing: ledger.draftAcceptanceText)
+                    if let seconds = ledger.last?.timeToFirstToken {
+                        SplitRow(leading: L10n.t("Time to first token (last)"), trailing: UsageFormat.responseDuration(seconds: seconds))
+                    }
+                    if let seconds = ledger.last?.generationSeconds {
+                        SplitRow(leading: L10n.t("Generation time (last)"), trailing: UsageFormat.responseDuration(seconds: seconds))
+                    }
                 }
             }
             .padding(.top, NotchLayout.blockSpacing)
@@ -735,6 +874,12 @@ enum UsageFormat {
         default:
             return "\(value)"
         }
+    }
+
+    static func responseDuration(seconds: Double?) -> String {
+        guard let seconds, seconds.isFinite, seconds >= 0 else { return "—" }
+        let value = seconds < 1 ? seconds * 1000 : seconds
+        return value.formatted(.number.precision(.fractionLength(0...2))) + (seconds < 1 ? " ms" : " s")
     }
 
     static func duration(seconds: Double?) -> String {
@@ -788,9 +933,42 @@ private struct CodexMetricList: View {
     }
 }
 
-private struct CodexDailyUsageChart: View {
+struct DailyTokenUsageChart: View {
+    let buckets: [CodexTokenUsage.DailyBucket]
+    @Environment(\.tooltipSecondaryInk) private var secondaryInk
+
+    private var maximum: Int { max(1, buckets.map(\.tokens).max() ?? 0) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SplitRow(leading: L10n.t("Daily tokens · 30 days"),
+                     trailing: "0–\(UsageFormat.tokens(buckets.map(\.tokens).max() ?? 0))")
+                .padding(.top, NotchLayout.blockSpacing)
+            CodexDailyUsageChart(buckets: buckets, maximum: maximum)
+                .padding(.top, NotchLayout.codexChartTop)
+            HStack {
+                Text(buckets.first.map { $0.startDate.split(separator: "-").suffix(2).reversed().joined(separator: "/") } ?? "—")
+                Spacer()
+                Text("Today")
+            }
+            .font(Typography.cardBody)
+            .foregroundStyle(secondaryInk)
+            .padding(.top, NotchLayout.codexUsageRowGap)
+            Text(L10n.t("Observed tokens, including cache"))
+                .font(Typography.cardBody)
+                .foregroundStyle(secondaryInk)
+                .padding(.top, NotchLayout.codexUsageRowGap)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(L10n.t("Daily tokens · 30 days"))
+        .accessibilityValue(buckets.map { "\($0.startDate): \($0.tokens)" }.joined(separator: ", "))
+    }
+}
+
+struct CodexDailyUsageChart: View {
     let buckets: [CodexTokenUsage.DailyBucket]
     let maximum: Int
+    var height: CGFloat = NotchLayout.codexChartHeight
     @Environment(\.tooltipSecondaryInk) private var secondaryInk
 
     var body: some View {
@@ -812,7 +990,7 @@ private struct CodexDailyUsageChart: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
             }
         }
-        .frame(height: NotchLayout.codexChartHeight)
+        .frame(height: height)
         .clipped()
     }
 }
@@ -899,17 +1077,33 @@ private struct UsageResetCreditsSection: View {
 private struct CodexUsageSection: View {
     let usage: CodexTokenUsage
     let now: Date
+    /// Per card, so the Claude and Codex charts can show different ranges.
+    @AppStorage private var periodRaw: String
+
+    init(usage: CodexTokenUsage, providerID: String, now: Date) {
+        self.usage = usage
+        self.now = now
+        _periodRaw = AppStorage(wrappedValue: TokenChartPeriod.month.rawValue,
+                                TokenChartPeriod.preferenceKey(providerID))
+    }
+
+    private var period: TokenChartPeriod { TokenChartPeriod(rawValue: periodRaw) ?? .month }
 
     private var buckets: [CodexTokenUsage.DailyBucket] {
-        usage.last30Days(now: now)
+        usage.buckets(for: period, now: now)
     }
 
+    /// Today's lone bar is measured against the busiest day, so it says how
+    /// today compares instead of always filling the chart.
     private var maximum: Int {
-        max(1, buckets.map(\.tokens).max() ?? 0)
+        let tallest = buckets.map(\.tokens).max() ?? 0
+        return max(1, period == .today ? max(tallest, usage.peakDailyTokens ?? 0) : tallest)
     }
 
-    private var todayText: String {
-        usage.usageToday(now: now).map { UsageFormat.tokens($0) } ?? L10n.t("Pending")
+    /// A missing bucket for today is pending, not zero.
+    private var totalText: String {
+        guard period == .today else { return UsageFormat.tokens(usage.usage(in: period, now: now)) }
+        return usage.usageToday(now: now).map { UsageFormat.tokens($0) } ?? L10n.t("Pending")
     }
 
     private var metrics: [CodexMetric] {
@@ -943,13 +1137,16 @@ private struct CodexUsageSection: View {
                 .fill(Palette.ringTrack)
                 .frame(height: NotchLayout.hairline)
 
-            SplitRow(leading: L10n.t("Today"), trailing: todayText)
+            UsagePeriodPicker(period: period) { periodRaw = $0.rawValue }
                 .padding(.top, NotchLayout.blockSpacing)
-            SplitRow(leading: L10n.t("30-day tokens"),
-                     trailing: UsageFormat.tokens(usage.usageInLast30Days(now: now)))
+            SplitRow(leading: period.totalLabel, trailing: totalText)
                 .padding(.top, NotchLayout.codexUsageRowGap)
             CodexDailyUsageChart(buckets: buckets, maximum: maximum)
                 .padding(.top, NotchLayout.codexChartTop)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(period.totalLabel)
+                .accessibilityValue(buckets.map { "\($0.startDate): \($0.tokens)" }
+                    .joined(separator: ", "))
         }
     }
 }
@@ -1107,7 +1304,7 @@ struct TooltipCard: View {
     /// The phase a local model is in, and the queue behind it, for the header.
     /// Ollama's relay only knows thinking; LM Studio's poll names the phase.
     private var localActivityNote: String? {
-        guard snapshot.localModel != nil, let activity, activity.state == .working else { return nil }
+        guard snapshot.isLocalCell, let activity, activity.state == .working else { return nil }
         return activity.note ?? activity.sessions.first?.name ?? L10n.t("Thinking")
     }
 
@@ -1119,14 +1316,17 @@ struct TooltipCard: View {
             groupCount: snapshot.windowGroupCount,
             moneyWindowCount: snapshot.windows.filter { $0.money != nil }.count,
             usageDetailGroupCount: snapshot.usageDetail?.visibleGroups.count ?? 0,
-            sessionCount: snapshot.localModel == nil ? (activity?.sessions.count ?? 0) : 0,
+            sessionCount: snapshot.isLocalCell ? 0 : (activity?.sessions.count ?? 0),
             sessionCap: sessionCap,
             statusMessage: snapshot.statusMessage,
             blockMessage: snapshot.block?.summary(now: now),
             hasTokenUsage: snapshot.tokenUsage != nil || snapshot.customUsageHistory != nil,
+            hasDailyTokenUsage: snapshot.dailyTokenUsage != nil,
+            observedHistory: snapshot.observedHistory,
             hasPlan: snapshot.plan != nil,
             hasResetCredits: snapshot.availableResetCredits(at: now) != nil,
             localModelName: snapshot.localModel?.name,
+            localModelGroupNames: snapshot.localModelGroupNames,
             showsLocalPerformance: snapshot.showsLocalPerformance,
                 localLedgerRows: snapshot.localLedgerRowCount,
             compactRowCount: snapshot.compactRowCount,
@@ -1145,20 +1345,26 @@ struct TooltipCard: View {
                 VStack(alignment: .leading, spacing: 0) {
                     ProviderTooltip(activityNote: localActivityNote, snapshot: snapshot, now: now, resetTimeFormat: resetTimeFormat,
                                     showUsagePace: showUsagePace)
+                    if let history = snapshot.observedHistory {
+                        ObservedUsageSection(history: history, providerID: snapshot.id, now: now)
+                    } else if let buckets = snapshot.dailyTokenUsage {
+                        DailyTokenUsageChart(buckets: buckets)
+                    }
                     if let resetCredits = snapshot.availableResetCredits(at: now) {
                         UsageResetCreditsSection(credits: resetCredits, now: now)
                     }
                     if let tokenUsage = snapshot.tokenUsage {
-                        CodexUsageSection(usage: tokenUsage, now: now)
+                        CodexUsageSection(usage: tokenUsage, providerID: snapshot.id, now: now)
                     } else if let history = snapshot.customUsageHistory {
-                        CodexUsageSection(usage: history.codexUsage, now: now)
+                        CodexUsageSection(usage: history.codexUsage, providerID: snapshot.id,
+                                          now: now)
                     }
                     if let usageDetail = snapshot.usageDetail, usageDetail.hasUsage {
                         DeepSeekUsageDetail(detail: usageDetail, now: now,
                                             schedule: deepSeekPricingSchedule,
                                             showsPricing: deepSeekPricingEnabled)
                     }
-                    if let activity, snapshot.localModel == nil {
+                    if let activity, !snapshot.isLocalCell {
                         SessionList(summary: activity, now: now, cap: sessionCap,
                                     onFocus: onFocusSession)
                     }

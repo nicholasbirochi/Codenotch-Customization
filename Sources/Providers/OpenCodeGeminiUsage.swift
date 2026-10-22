@@ -52,7 +52,7 @@ enum OpenCodeGeminiUsage {
         let rows = SQLiteStore.rows(
             in: db,
             sql: schema.geminiUsageSQL(startOfMonth: startOfMonth),
-            columns: 7
+            columns: 8
         )
 
         let entries: [(at: Date, tokens: Int, calls: Int)] = rows.compactMap { row in

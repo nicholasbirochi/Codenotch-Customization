@@ -21,6 +21,31 @@ Hover a ring for its limit windows and when they reset. Claude's ring shows the
 same **current session** window Claude Code's own `/usage` leads with, so the
 two never disagree.
 
+## Codenotch Dev (this fork)
+
+Native monitoring updates and test evidence: [Dev monitoring](docs/dev-monitoring.md).
+
+This fork is a standalone app, installed as **Codenotch Dev** with bundle id
+`com.nicholasbirochi.codenotch.nvidia`. The official Codenotch app does not need
+to remain installed. Its Sparkle framework is embedded in the Dev bundle.
+Official automatic updates are intentionally restricted to `com.vinz.codenotch`;
+keeping the official app does not update this fork or merge upstream changes.
+Dev updates are built from this repository to preserve its customizations.
+
+Local OpenCode/NVIDIA and per-model runtime history uses recorded counts only,
+with Today/Week/Month/Year views (Year is the calendar year in 12 monthly bars;
+runtime logs keep a year of daily totals and 60 days of hourly ones) and explicit
+unknown project attribution. Copilot retains its quota categories and shows the
+same picker, but its current source does not provide a dated event history or
+projects, so its periods stay empty. See [monitoring scope and validation](docs/dev-monitoring.md).
+The Claude and Codex cards draw their token chart for Today (one bar, measured
+against the busiest day), a Week (7 daily bars), Month (30 daily bars) or Year
+(12 monthly bars) picked on each card and remembered per card. Claude's year comes from Codenotch's own local index;
+Codex's covers only the days its server profile returns. Every period picker,
+including Today/Week/Month/Year in the cost section, shows its labels in English
+on one row whatever the app language.
+Codenotch observes usage; it does not route tasks between AI models.
+
 ## Download
 
 [![Download for macOS](docs/design/download-macos.svg)](https://github.com/vinzdg/codenotch/releases/latest/download/Codenotch.dmg)
@@ -100,7 +125,7 @@ wire-level details.
 | **LM Studio** | local runtime | Loaded models from LM Studio's own listing, what each one is doing (prompt, generating, queue) from its SDK socket, and speed, context use and tokens per day from its server log. No relay needed. |
 | **Grok** | official | The Grok CLI session in `~/.grok/auth.json`, against the same credits billing endpoint `/usage` uses. Once that session has expired it is renewed in memory from the file's own refresh token, the way the CLI would; the file itself is never written. |
 | **OpenCode** | official | The Go plan's official usage endpoint, with the `opencode-go` key OpenCode itself stores on sign-in. |
-| **Command Code** | official | The GOAT plan's `/alpha` billing endpoints, with the key the Command Code app writes to `~/.commandcode/auth.json`. |
+| **Command Code** | official | The GOAT plan's `/alpha` billing endpoints, with the key the Command Code app writes to `~/.commandcode/auth.json`. Further accounts are read from `~/.commandcode-<slug>` homes. |
 | **GitHub Copilot** | official | GitHub's Copilot quota endpoint, authenticated with the GitHub CLI session already on the Mac (`gh auth login`). |
 | **Kimi** | official | The Kimi Code CLI session in `~/.kimi-code/credentials/kimi-code.json`, against the same `/usages` endpoint the CLI's `/usage` asks. Shows the 5-hour rate window and the weekly quota. |
 | **Kiro** | official | The kiro-cli session already on this Mac, against the same `/usage` that command prints. Shows monthly credits. |
@@ -170,6 +195,8 @@ is running, and what it wants.
 Two Claude Code logins are two rings. Anyone who keeps a work account apart with
 `CLAUDE_CONFIG_DIR=~/.claude-work claude` gets a **Claude (work)** ring beside the
 personal one, with its own limits, its own sessions and its own row in Settings.
+Rings are named after the signed-in account's domain (**Claude Gmail**) only when
+there is more than one; a single login is just **Claude**.
 Any `~/.claude-<slug>` directory Claude Code has run against is found at launch;
 the default `~/.claude` always comes first, the rest in alphabetical order, so the
 rings never swap places.
@@ -198,6 +225,23 @@ or writes Codex credentials. If a login expires, use that profile's Codex CLI
 to renew it. Directories outside the `~/.codex-<slug>` convention are not
 discovered automatically, and adding a profile requires restarting Codenotch,
 just as it does for Claude.
+
+Command Code has no setting for a second configuration directory: it keeps its
+login in `$HOME/.commandcode/auth.json`. A second account therefore lives in a
+second home. `~/.commandcode` stays the **Command Code** ring, and each
+`~/.commandcode-<slug>` directory adds a **Command Code (slug)** ring with its
+own limits and Settings row:
+
+```sh
+mkdir -p "$HOME/.commandcode-work"
+HOME="$HOME/.commandcode-work" commandcode login
+```
+
+Choose the second account during sign-in, then restart Codenotch. The login
+lands in `~/.commandcode-work/.commandcode/auth.json`, and that is the file
+Codenotch reads; an `auth.json` placed directly in `~/.commandcode-work` is read
+too. `COMMAND_CODE_API_KEY` names one account, so it applies to the default
+ring only. Codenotch never copies, refreshes or writes these logins.
 
 ## When a session ends
 
@@ -269,6 +313,11 @@ a menu item, **Keep open**, ticked while the notch is being held open, which is
 the surer way to release one that was kept open by accident. The item is
 greyed out when Settings says Always show, because that choice is Settings' to
 change.
+
+The × at the end of a card's header closes it: the notch folds at once, is no
+longer kept open, and stays folded until the pointer has moved off it, so the
+hover that is still there does not open it again. Clicking the pill brings it
+back straight away.
 
 In Settings → Appearance → Reset time, choose **Time remaining** for countdowns
 like "Resets in 3 Days 3h". **Reset date** keeps the reset date and time, with

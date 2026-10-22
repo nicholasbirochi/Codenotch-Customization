@@ -495,6 +495,14 @@ final class ClaudeAccountNameTests: XCTestCase {
         XCTAssertEqual(names["claude-work"], "Claude Hotmail")
     }
 
+    /// One login is the only Claude ring, so the account name adds nothing.
+    func testALoneAccountIsJustClaude() throws {
+        let home = try home(default: "paulo@gmail.com")
+        let names = ClaudeProfile.displayNames(for: [ClaudeProfile.default(home: home)])
+
+        XCTAssertEqual(names, ["claude": "Claude"])
+    }
+
     /// A clash between two profiles that have no address to fall back to — two
     /// directories called the same thing cannot happen, so this only asks that
     /// nothing is dropped.

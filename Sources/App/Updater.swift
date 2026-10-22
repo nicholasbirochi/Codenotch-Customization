@@ -77,6 +77,14 @@ final class Updater: NSObject, ObservableObject, SPUUpdaterDelegate {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
     }
 
+    var supportsAutomaticUpdates: Bool {
+        Self.supportsAutomaticUpdates(bundleIdentifier: Bundle.main.bundleIdentifier)
+    }
+
+    static func supportsAutomaticUpdates(bundleIdentifier: String?) -> Bool {
+        bundleIdentifier == "com.vinz.codenotch"
+    }
+
     var lastChecked: Date? { sparkle.lastUpdateCheckDate }
 
     /// Starts the scheduled checks, and checks now — so an update out since it
@@ -84,6 +92,7 @@ final class Updater: NSObject, ObservableObject, SPUUpdaterDelegate {
     /// updater is lazy so that `self` exists before it is handed over as the
     /// delegate.
     func start() {
+        guard supportsAutomaticUpdates else { return }
         guard !started else { return }
         started = true
         sparkle.automaticallyDownloadsUpdates = false
@@ -218,6 +227,7 @@ final class Updater: NSObject, ObservableObject, SPUUpdaterDelegate {
     /// This one *does* show UI — it was asked for, so silence would read as a
     /// broken button.
     func checkNow() {
+        guard supportsAutomaticUpdates else { return }
         start()
         outcome = .checking
         sparkle.checkForUpdates()

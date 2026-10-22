@@ -7,7 +7,8 @@ final class NotchViewModel: ObservableObject {
     /// Per runtime, so Ollama's relay switching off clears its own readings
     /// and nobody else's.
     private var performances: [String: [String: LocalModelPerformance]] = [:]
-    private var ledger = LocalTokenLedger()
+    private var ledgers: [String: LocalTokenLedger] = [:]
+    private var providerSnapshots: [ProviderSnapshot] = []
     private var localMetricsEnabled = false
 
     /// The Ollama relay's own id; its readings are keyed by model name.
@@ -20,8 +21,11 @@ final class NotchViewModel: ObservableObject {
     }
 
     func updateSnapshots(_ providerSnapshots: [ProviderSnapshot]) {
+        self.providerSnapshots = providerSnapshots
+        let providerSnapshots = addingRecordedModels(to: providerSnapshots)
         let hoveredID = hoveredSnapshot?.id
-        let next = ProviderOrder.cells(from: providerSnapshots, keeping: snapshots).map(decorated).map(Costs.decorate)
+        let cells = ProviderOrder.cells(from: providerSnapshots, keeping: snapshots).map(decorated)
+        let next = Self.groupingLocalModels(cells).map(Costs.decorate)
         let nextHoveredIndex = hoveredID.flatMap { id in next.firstIndex { $0.id == id } }
         if hoveredIndex != nextHoveredIndex { hoveredIndex = nextHoveredIndex }
         snapshots = next
@@ -35,19 +39,94 @@ final class NotchViewModel: ObservableObject {
 
     /// Logged tokens per cell, read against `now` as it is drawn so "today"
     /// rolls over at midnight without a new line being written.
-    func updateLedger(_ ledger: LocalTokenLedger) {
-        self.ledger = ledger
-        snapshots = snapshots.map(decorated)
+    func updateLedger(_ ledger: LocalTokenLedger, source: String = LMStudioMetrics.providerID) {
+        ledgers[source] = ledger
+        updateSnapshots(providerSnapshots)
+    }
+
+    private func addingRecordedModels(to snapshots: [ProviderSnapshot]) -> [ProviderSnapshot] {
+        guard let ledger = ledgers[Self.ollamaSource] else { return snapshots }
+        return snapshots.map { snapshot in
+            guard snapshot.id == Self.ollamaSource else { return snapshot }
+            var snapshot = snapshot
+            var models = snapshot.localRuntime?.models ?? []
+            let loaded = Set(models.map { OllamaThinkingStream.modelKey($0.name) })
+            let prefix = "ollama-local:model:"
+            for key in ledger.instances where key.hasPrefix(prefix) && ledger.days[key]?.isEmpty == false {
+                let name = String(key.dropFirst(prefix.count))
+                if !loaded.contains(name) {
+                    models.append(.init(name: name, memoryBytes: nil, contextLength: nil,
+                                        quantizationLevel: nil, loaded: false))
+                }
+            }
+            snapshot.localRuntime = LocalRuntimeReading(models: models)
+            return snapshot
+        }
+    }
+
+    /// Ollama's models share one card: three rings for one runtime crowded
+    /// the notch for figures read now and then. The card sits where the
+    /// first model did; its hover panel lists them smallest first, a tie by the
+    /// family before the colon — `qwen2.5:7b` ahead of `qwen2.5-coder:7b` — then by name.
+    static func groupingLocalModels(_ cells: [ProviderSnapshot],
+                                    of providerID: String = ollamaSource) -> [ProviderSnapshot] {
+        let isModel = { (cell: ProviderSnapshot) in cell.providerID == providerID && cell.localModel != nil }
+        guard let index = cells.firstIndex(where: isModel) else { return cells }
+        let models = cells.filter(isModel)
+        let first = models[0]
+        var group = ProviderSnapshot(id: providerID, displayName: first.displayName, glyph: first.glyph,
+                                     fidelity: first.fidelity, status: first.status, windows: [],
+                                     kind: .localRuntime)
+        group.localModelCells = models.sorted { lhs, rhs in
+            let leftName = lhs.localModel?.name ?? "", rightName = rhs.localModel?.name ?? ""
+            let left = parameterBillions(leftName) ?? .infinity
+            let right = parameterBillions(rightName) ?? .infinity
+            guard left == right else { return left < right }
+            let family = leftName.prefix { $0 != ":" }.localizedStandardCompare(rightName.prefix { $0 != ":" })
+            return (family == .orderedSame ? leftName.localizedStandardCompare(rightName) : family) == .orderedAscending
+        }
+        var result = cells.filter { !isModel($0) }
+        result.insert(group, at: index)
+        return result
+    }
+
+    /// The size tag in a model name — `qwen2.5-coder:14b` is 14 — read from
+    /// the tag after the colon, so the `2.5` in the family name is not it.
+    static func parameterBillions(_ name: String) -> Double? {
+        let tag = name.split(separator: ":").dropFirst().joined(separator: ":").lowercased()
+        for part in tag.split(whereSeparator: { $0 == "-" || $0 == "_" }) where part.hasSuffix("b") {
+            if let value = Double(part.dropLast()), value > 0 { return value }
+        }
+        return nil
     }
 
     private func decorated(_ snapshot: ProviderSnapshot) -> ProviderSnapshot {
+        if snapshot.isLocalModelGroup {
+            var snapshot = snapshot
+            snapshot.localModelCells = snapshot.localModelCells.map(decorated)
+            return snapshot
+        }
         guard let model = snapshot.localModel else { return snapshot }
         var snapshot = snapshot
         let shows = localMetricsEnabled || snapshot.localRuntimeMeasuresSpeed
         snapshot.showsLocalPerformance = shows
         snapshot.localPerformance = shows
             ? performances[snapshot.providerID]?[Self.performanceKey(for: snapshot, model: model)] : nil
-        snapshot.localLedger = ledger.summary(for: snapshot.id, now: now)
+        let ledger = ledgers[snapshot.providerID]
+        snapshot.localLedger = ledger?.summary(for: snapshot.id, now: now)
+        if shows, snapshot.localPerformance == nil, let last = snapshot.localLedger?.last,
+           let output = last.outputTokens, let speed = last.tokensPerSecond {
+            snapshot.localPerformance = LocalModelPerformance(outputTokens: output,
+                tokensPerSecond: speed, measuredAt: last.at)
+        }
+        let isOllama = snapshot.providerID == Self.ollamaSource
+        // With the relay on, a model it has not served yet starts from an
+        // empty chart rather than "unsupported", and fills as responses pass.
+        snapshot.observedHistory = ledger?.history(for: snapshot.id, now: now)
+            ?? (isOllama && localMetricsEnabled ? .aggregate([], now: now) : .unsupported)
+        if snapshot.observedHistory?.unavailable == false {
+            snapshot.observedHistory?.source = isOllama ? .relay : .runtimeLog
+        }
         snapshot.localContextFraction = snapshot.localLedger?.contextFraction(contextLength: model.contextLength)
         return snapshot
     }
@@ -111,13 +190,13 @@ final class NotchViewModel: ObservableObject {
     @Published private(set) var refreshingCells: Set<String> = []
 
     func isRefreshing(_ snapshot: ProviderSnapshot) -> Bool {
-        snapshot.localModel == nil
-            ? refreshing.contains(snapshot.providerID)
-            : refreshingCells.contains(snapshot.id)
+        snapshot.isLocalCell
+            ? refreshingCells.contains(snapshot.id)
+            : refreshing.contains(snapshot.providerID)
     }
 
     func refresh(_ snapshot: ProviderSnapshot, using refreshProvider: (String) async -> Void) async {
-        guard snapshot.localModel != nil else {
+        guard snapshot.isLocalCell else {
             await refreshProvider(snapshot.providerID)
             return
         }
@@ -164,6 +243,9 @@ final class NotchViewModel: ObservableObject {
     /// A tap on a session row in the tooltip: jump to the terminal tab the
     /// session runs in. Takes the session's pid; wired to `SessionFocus`.
     var onFocusSession: ((pid_t) -> Void)?
+    /// The × on the tooltip card: fold the notch now, even when it was kept
+    /// open. Wired to `NotchWindowController.closeTooltip`.
+    var onCloseTooltip: (() -> Void)?
     /// Which screen edge the notch is welded to. Everything geometric reads
     /// this through `placement` rather than assuming an axis.
     @Published var edge: NotchEdge = .right
@@ -275,7 +357,8 @@ final class NotchViewModel: ObservableObject {
 
     /// A card `length` long centred on `centre`, kept on the screen.
     func cardAlong(centredOn centre: CGFloat, length: CGFloat) -> CGFloat {
-        guard let range = visibleAlongRange else { return centre }
+        let extent = edge.isVertical ? panelSize.height : panelSize.width
+        let range = visibleAlongRange ?? 0...extent
         let lower = range.lowerBound + length / 2
         let upper = range.upperBound - length / 2
         guard lower <= upper else { return (range.lowerBound + range.upperBound) / 2 }
@@ -1168,6 +1251,9 @@ final class NotchViewModel: ObservableObject {
     /// A provider with no activity source gets none, rather than borrowing
     /// somebody else's.
     func activity(for snapshot: ProviderSnapshot) -> ActivitySummary? {
+        if snapshot.isLocalModelGroup {
+            return snapshot.localModelCells.lazy.compactMap { self.activity(for: $0) }.first
+        }
         guard let model = snapshot.localModel else { return activity(for: snapshot.providerID) }
         if let local = localActivities[snapshot.id] {
             return ActivitySummary(sessions: [AgentSession(id: snapshot.id, name: local.label,
@@ -1232,9 +1318,13 @@ final class NotchViewModel: ObservableObject {
     var slack: CGFloat { slack(cellCount: snapshots.count) }
 
     func slack(cellCount: Int) -> CGFloat {
-        NotchLayout.slack(for: edge,
+        let preferred = NotchLayout.slack(for: edge,
                           maxCardHeight: maxCardHeight(cellCount: cellCount),
                           notchScale: sizeScale)
+        guard edge.isVertical, screenSize.height > 0 else { return preferred }
+        // Long model lists share the available margin; cardAlong keeps each
+        // tooltip on screen instead of reserving half a card beyond both ends.
+        return min(preferred, max(0, (screenSize.height - cutoutSpan(cellCount: cellCount)) / 2))
     }
 
     /// How many sessions a tooltip may list here before it has to summarise
@@ -1274,14 +1364,17 @@ final class NotchViewModel: ObservableObject {
                 groupCount: Set(snapshot.windows.compactMap(\.group)).count,
                 moneyWindowCount: snapshot.windows.filter { $0.money != nil }.count,
                 usageDetailGroupCount: snapshot.usageDetail?.visibleGroups.count ?? 0,
-                sessionCount: snapshot.localModel == nil ? sessionCap + 1 : 0,
+                sessionCount: snapshot.isLocalCell ? 0 : sessionCap + 1,
                 sessionCap: sessionCap,
                 statusMessage: snapshot.statusMessage,
                 blockMessage: snapshot.block?.summary(now: now),
                 hasTokenUsage: snapshot.tokenUsage != nil,
+                hasDailyTokenUsage: snapshot.dailyTokenUsage != nil,
+            observedHistory: snapshot.observedHistory,
                 hasPlan: snapshot.plan != nil,
                 hasResetCredits: snapshot.hasAvailableResetCredits,
                 localModelName: snapshot.localModel?.name,
+                localModelGroupNames: snapshot.localModelGroupNames,
                 showsLocalPerformance: snapshot.showsLocalPerformance,
                 localLedgerRows: snapshot.localLedgerRowCount,
                 compactRowCount: snapshot.compactRowCount,
@@ -1394,7 +1487,7 @@ final class NotchViewModel: ObservableObject {
         return NotchPlacement.panelSize(
             edge: edge,
             length: cutoutSpan(cellCount: cellCount)
-                + 2 * NotchLayout.slack(for: edge, maxCardHeight: card, notchScale: sizeScale),
+                + 2 * slack(cellCount: cellCount),
             depth: NotchLayout.bodyDepth(for: edge) * sizeScale
                 + NotchLayout.tooltipDepth(for: edge, maxCardHeight: card)
         )

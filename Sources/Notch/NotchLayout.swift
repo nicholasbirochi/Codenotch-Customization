@@ -223,6 +223,15 @@ enum NotchLayout {
     static let codexUsageRowGap = Design.px(12)
     static let codexChartTop   = Design.px(15)
     static let codexChartHeight = Design.px(115)
+    /// Shorter: an Ollama card stacks one of these per model.
+    static let localModelChartHeight = Design.px(70)
+    static func observedUsageHeight(_ history: ObservedUsageHistory) -> CGFloat {
+        let divider = hairline + 2 * codexUsageRowGap
+        if history.unavailable { return 2 * divider + 5 * cardBodyLineHeight }
+        let metrics = history.source == .openCode ? 5 : 3
+        return 3 * divider + CGFloat(6 + metrics + history.projectRowCount) * cardBodyLineHeight
+            + codexChartTop + codexChartHeight
+    }
     /// Title, count, and expiry. The third line is reserved so a missing
     /// expiry cannot shrink the hover region under the card.
     static var codexResetCreditsHeight: CGFloat {
@@ -382,6 +391,11 @@ enum NotchLayout {
             + blockSpacing + 2 * chart + usageDetailChartGap
     }
 
+    static var dailyTokenUsageHeight: CGFloat {
+        blockSpacing + 3 * cardBodyLineHeight + codexChartTop + codexChartHeight
+            + 2 * codexUsageRowGap
+    }
+
     static func cardHeight(windowCount: Int, groupCount: Int = 0,
                            moneyWindowCount: Int = 0, usageDetailGroupCount: Int = 0,
                            sessionCount: Int = 0,
@@ -389,9 +403,13 @@ enum NotchLayout {
                            statusMessage: String? = nil,
                            blockMessage: String? = nil,
                            hasTokenUsage: Bool = false,
+                           hasDailyTokenUsage: Bool = false,
+                           observedHistory: ObservedUsageHistory? = nil,
                            hasPlan: Bool = false,
                            hasResetCredits: Bool = false,
-                           localModelName: String? = nil, showsLocalPerformance: Bool = false,
+                           localModelName: String? = nil,
+                           localModelGroupNames: [String] = [],
+                           showsLocalPerformance: Bool = false,
                            localLedgerRows: Int = 0,
                            compactRowCount: Int = 0,
                            showsDeepSeekPricing: Bool = true,
@@ -406,7 +424,16 @@ enum NotchLayout {
             height += headerToBlock + bodyTextHeight(blockMessage)
         }
 
-        if let localModelName {
+        if !localModelGroupNames.isEmpty {
+            // Match LocalModelBlock: per model the mark-and-name line and the
+            // calls/input/output rows, a rule, the period picker, its chart and
+            // the dates under it, with a plain gap between models.
+            let block = 4 * cardBodyLineHeight + 3 * sessionRowGap
+                + hairline + 2 * codexUsageRowGap
+                + cardBodyLineHeight + codexChartTop + localModelChartHeight + cardBodyLineHeight
+            height += headerToBlock + CGFloat(localModelGroupNames.count) * block
+                + CGFloat(localModelGroupNames.count - 1) * blockSpacing
+        } else if let localModelName {
             // Match RuntimeModelDetails so the panel and hover region fit all
             // rows: the runtime's own, the speed pair, and a logged runtime's
             // ledger lines.
@@ -458,11 +485,17 @@ enum NotchLayout {
         height += usageDetailHeight(usageDetailGroupCount,
                                     showsPricing: showsDeepSeekPricing)
 
+        if let observedHistory { height += observedUsageHeight(observedHistory) }
+
+        if hasDailyTokenUsage && observedHistory == nil {
+            height += dailyTokenUsageHeight
+        }
+
         if hasTokenUsage {
             height += codexUsageTop + hairline + blockSpacing
                 + codexMetricTop + codexMetricHeight + codexMetricBottom
                 + hairline
-                + 2 * cardBodyLineHeight
+                + 2 * cardBodyLineHeight      // period picker, period total
                 + codexUsageRowGap
                 + codexChartTop + codexChartHeight
         }

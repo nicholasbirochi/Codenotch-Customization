@@ -302,7 +302,7 @@ struct ProviderCell: View {
     var body: some View {
         VStack(spacing: NotchLayout.ringLabelGap) {
             ProviderRing(
-                usedFraction: snapshot.localModel == nil && snapshot.hasReading ? snapshot.ringFraction : nil,
+                usedFraction: !snapshot.isLocalCell && snapshot.hasReading ? snapshot.ringFraction : nil,
                 glyph: snapshot.glyph,
                 customIconFilename: snapshot.customIconFilename,
                 isStale: snapshot.status.isStale || !snapshot.hasReading,
@@ -322,11 +322,22 @@ struct ProviderCell: View {
         .accessibilityLabel(accessibilityText)
     }
 
+    /// The local cell's own figure: Ollama's tokens in the chart's period,
+    /// otherwise its speed or that it is loaded.
+    private var localReadingText: String {
+        if let tokens = snapshot.periodTokensText(snapshot.observedPeriod) { return tokens }
+        guard snapshot.showsLocalPerformance else { return "Loaded" }
+        return snapshot.localPerformance.map { "Last generation speed \($0.speedText), \($0.band.label)" }
+            ?? "Speed not measured"
+    }
+
     /// Everything the cell says, as one sentence for VoiceOver and the tests.
     var accessibilityText: String {
         snapshot.localModel.map {
-            "\($0.brand.map { "\($0.displayName), " } ?? "")\($0.name), \(snapshot.displayName) local, \(snapshot.showsLocalPerformance ? (snapshot.localPerformance.map { "Last generation speed \($0.speedText), \($0.band.label)" } ?? "Speed not measured") : "Loaded"), \($0.detail)\(localActivityText)\(localLedgerText)"
-        } ?? "\(snapshot.displayName), \(readingText)"
+            "\($0.brand.map { "\($0.displayName), " } ?? "")\($0.name), \(snapshot.displayName) local, \(localReadingText), \($0.detail)\(localActivityText)\(localLedgerText)"
+        } ?? (snapshot.isLocalModelGroup
+            ? "\(snapshot.displayName) local, \(localReadingText), \(snapshot.localModelCells.compactMap(\.localModel?.name).joined(separator: ", "))\(localActivityText)"
+            : "\(snapshot.displayName), \(readingText)")
     }
 
     /// What the model is doing, the way the tooltip's header says it.
@@ -479,12 +490,29 @@ struct ProviderReading: View {
     var across: CGFloat? = nil
     /// Which end of that room it sits at — the Mac's notch's.
     var acrossAlignment: Alignment = .leading
+    /// The card chart's period, observed so a pick there redraws this at once.
+    @AppStorage private var periodRaw: String
+
+    init(snapshot: ProviderSnapshot, weeklyRing: WeeklyRing = .off, showsWeeklyReading: Bool = false,
+         across: CGFloat? = nil, acrossAlignment: Alignment = .leading) {
+        self.snapshot = snapshot
+        self.weeklyRing = weeklyRing
+        self.showsWeeklyReading = showsWeeklyReading
+        self.across = across
+        self.acrossAlignment = acrossAlignment
+        _periodRaw = AppStorage(wrappedValue: UsageHistoryPeriod.month.rawValue,
+                                UsageHistoryPeriod.preferenceKey(snapshot.id))
+    }
+
+    private var period: UsageHistoryPeriod { UsageHistoryPeriod(rawValue: periodRaw) ?? .month }
+    private var headline: String { snapshot.headlineText(period: period) }
+    private var pending: Bool { snapshot.headlineIsPending(period: period) }
 
     /// A dash, not "0%": nothing read is not the same as nothing used.
     var text: String {
         guard snapshot.hasReading else { return "—" }
-        guard let weekly = weeklyReading else { return snapshot.headlineText }
-        return "\(snapshot.headlineText)/\(Percent.text(for: weekly))%"
+        guard let weekly = weeklyReading else { return headline }
+        return "\(headline)/\(Percent.text(for: weekly))%"
     }
 
     /// What the weekly ring draws, when it and its reading are on. The pair
@@ -494,7 +522,7 @@ struct ProviderReading: View {
     /// Only after a percentage: a count or a cost with a percentage after it
     /// would read as one quantity, and it is not.
     private var weeklyReading: Double? {
-        guard showsWeeklyReading, weeklyRing != .off, snapshot.localModel == nil,
+        guard showsWeeklyReading, weeklyRing != .off, !snapshot.isLocalCell,
               snapshot.usedFraction != nil, snapshot.headline?.prefersUsedText != true
         else { return nil }
         return snapshot.weeklyFraction
@@ -516,8 +544,7 @@ struct ProviderReading: View {
             Text(text)
                 .font(isPair ? Typography.percentPairAcross : Typography.percentAcross)
                 .monospacedDigit()
-                .foregroundStyle(snapshot.showsLocalPerformance && snapshot.localPerformance == nil
-                                 ? Palette.textSecondary : Palette.textPrimary)
+                .foregroundStyle(pending ? Palette.textSecondary : Palette.textPrimary)
                 .lineLimit(1)
                 // Never into the side's own curved end: smaller before that.
                 .minimumScaleFactor(0.4)
@@ -532,14 +559,13 @@ struct ProviderReading: View {
     private var underTheRing: some View {
         Text(text)
             .font(snapshot.hasReading && weeklyReading != nil ? Typography.percentPair : Typography.percent)
-            .foregroundStyle(snapshot.showsLocalPerformance && snapshot.localPerformance == nil
-                             ? Palette.textSecondary : Palette.textPrimary)
+            .foregroundStyle(pending ? Palette.textSecondary : Palette.textPrimary)
             // Keep local speeds inside the ring's column so longer units
             // cannot consume the notch's existing side margins.
             .lineLimit(1)
-            .minimumScaleFactor(snapshot.localModel == nil ? 1 : 0.5)
-            .fixedSize(horizontal: snapshot.localModel == nil, vertical: false)
-            .frame(width: snapshot.localModel == nil ? nil : NotchLayout.ringDiameter,
+            .minimumScaleFactor(snapshot.isLocalCell ? 0.5 : 1)
+            .fixedSize(horizontal: !snapshot.isLocalCell, vertical: false)
+            .frame(width: snapshot.isLocalCell ? NotchLayout.ringDiameter : nil,
                    height: NotchLayout.percentLineHeight)
             .contentTransition(.numericText())
             .animation(NotchMotion.reading, value: text)

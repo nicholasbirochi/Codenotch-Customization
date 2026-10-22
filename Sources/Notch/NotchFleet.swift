@@ -32,7 +32,7 @@ final class NotchFleet {
     /// the LM Studio log each replace their own readings wholesale.
     private var performances: [String: [String: LocalModelPerformance]] = [:]
     private var localActivities: [String: LocalModelActivity] = [:]
-    private var ledger = LocalTokenLedger()
+    private var ledgers: [String: LocalTokenLedger] = [:]
     private var localMetricsEnabled = false
 
     func setLocalMetricsEnabled(_ enabled: Bool) {
@@ -323,11 +323,9 @@ final class NotchFleet {
         }
     }
 
-    func setLedger(_ ledger: LocalTokenLedger) {
-        self.ledger = ledger
-        for model in models {
-            model.updateLedger(ledger)
-        }
+    func setLedger(_ ledger: LocalTokenLedger, source: String = LMStudioMetrics.providerID) {
+        ledgers[source] = ledger
+        for model in models { model.updateLedger(ledger, source: source) }
     }
 
     /// Opens every panel for a moment, because something happened — the same
@@ -492,7 +490,7 @@ final class NotchFleet {
         for (source, measurements) in performances {
             controller.model.updatePerformances(measurements, source: source)
         }
-        controller.model.updateLedger(ledger)
+        for (source, ledger) in ledgers { controller.model.updateLedger(ledger, source: source) }
         controller.model.refreshing = refreshing
         controller.model.sessions = sessions
         controller.model.now = Date()

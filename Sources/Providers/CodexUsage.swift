@@ -48,22 +48,60 @@ struct CodexTokenUsage: Codable, Equatable, Sendable {
 
     /// The consecutive calendar days represented by the card's chart.
     func last30Days(now: Date = Date(), calendar: Calendar = .current) -> [DailyBucket] {
+        lastDays(30, now: now, calendar: calendar)
+    }
+
+    func usageInLast30Days(now: Date = Date(), calendar: Calendar = .current) -> Int {
+        last30Days(now: now, calendar: calendar).reduce(0) { $0 + $1.tokens }
+    }
+
+    /// The bars for one chart period: today's single bar, a bar per day for a
+    /// week or a month, a bar per calendar month for a year. Days the source
+    /// never reported count as zero, so the bar count never depends on how much
+    /// history exists.
+    func buckets(for period: TokenChartPeriod, now: Date = Date(),
+                 calendar: Calendar = .current) -> [DailyBucket] {
+        switch period {
+        case .today: return lastDays(1, now: now, calendar: calendar)
+        case .week: return lastDays(7, now: now, calendar: calendar)
+        case .month: return lastDays(30, now: now, calendar: calendar)
+        case .year: return last12Months(now: now, calendar: calendar)
+        }
+    }
+
+    func usage(in period: TokenChartPeriod, now: Date = Date(),
+               calendar: Calendar = .current) -> Int {
+        buckets(for: period, now: now, calendar: calendar).reduce(0) { $0 + $1.tokens }
+    }
+
+    private func lastDays(_ count: Int, now: Date, calendar: Calendar) -> [DailyBucket] {
         let today = calendar.startOfDay(for: now)
         var values: [String: DailyBucket] = [:]
         for bucket in dailyUsageBuckets {
             values[bucket.startDate] = bucket
         }
 
-        return (0..<30).compactMap { offset in
-            guard let date = calendar.date(byAdding: .day, value: offset - 29, to: today)
+        return (0..<count).compactMap { offset in
+            guard let date = calendar.date(byAdding: .day, value: offset - (count - 1), to: today)
             else { return nil }
             let key = Self.dayKey(for: date, calendar: calendar)
             return values[key] ?? DailyBucket(startDate: key, tokens: 0)
         }
     }
 
-    func usageInLast30Days(now: Date = Date(), calendar: Calendar = .current) -> Int {
-        last30Days(now: now, calendar: calendar).reduce(0) { $0 + $1.tokens }
+    /// The current month and the eleven before it, keyed "yyyy-MM".
+    private func last12Months(now: Date, calendar: Calendar) -> [DailyBucket] {
+        var totals: [String: Int] = [:]
+        for bucket in dailyUsageBuckets {
+            totals[String(bucket.startDate.prefix(7)), default: 0] += bucket.tokens
+        }
+        guard let thisMonth = calendar.dateInterval(of: .month, for: now)?.start else { return [] }
+        return (0..<12).compactMap { offset in
+            guard let date = calendar.date(byAdding: .month, value: offset - 11, to: thisMonth)
+            else { return nil }
+            let key = String(Self.dayKey(for: date, calendar: calendar).prefix(7))
+            return DailyBucket(startDate: key, tokens: totals[key] ?? 0)
+        }
     }
 
     /// A missing current-day bucket means the server has not published today's
@@ -82,6 +120,32 @@ struct CodexTokenUsage: Codable, Equatable, Sendable {
         return String(format: "%04d-%02d-%02d",
                       components.year ?? 0, components.month ?? 0, components.day ?? 0)
     }
+}
+
+/// The range the Codex/Claude token chart covers, chosen per card.
+enum TokenChartPeriod: String, CaseIterable, Identifiable, PeriodOption {
+    case today, week, month, year
+    var id: String { rawValue }
+    /// English in every language, like the other period pickers.
+    var title: String {
+        switch self {
+        case .today: return "Today"
+        case .week: return "Week"
+        case .month: return "Month"
+        case .year: return "Year"
+        }
+    }
+    /// The label beside the period's total. Rolling, like the bars: today, the
+    /// last 7 or 30 days, or this month and the eleven before it.
+    var totalLabel: String {
+        switch self {
+        case .today: return "Tokens today"
+        case .week: return "7-day tokens"
+        case .month: return "30-day tokens"
+        case .year: return "12-month tokens"
+        }
+    }
+    static func preferenceKey(_ providerID: String) -> String { "tokenChart.period.\(providerID)" }
 }
 
 /// The account's main rate-limit windows belong in the usage rings. Spark

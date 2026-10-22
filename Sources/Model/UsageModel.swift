@@ -320,11 +320,25 @@ struct ProviderSnapshot: Identifiable, Equatable {
 
     var providerID: String { sourceProviderID ?? id }
 
+    /// A runtime's models gathered into one card: each still decorated as its
+    /// own cell, read by the card's hover panel, ordered by size.
+    var localModelCells: [ProviderSnapshot] = []
+    var isLocalModelGroup: Bool { !localModelCells.isEmpty }
+    /// The grouped models' names, in panel order, for sizing the hover card.
+    var localModelGroupNames: [String] { localModelCells.map { $0.localModel?.name ?? $0.displayName } }
+    /// A model or a group of them: neither has a quota, an arc or sessions.
+    var isLocalCell: Bool { localModel != nil || isLocalModelGroup }
+    /// The group's models in its place, any other cell as it is: what the
+    /// menu lists line by line.
+    var modelCells: [ProviderSnapshot] { isLocalModelGroup ? localModelCells : [self] }
+
     var notchSnapshots: [ProviderSnapshot] {
         guard kind == .localRuntime, localModel == nil else { return [self] }
         return (localRuntime?.models ?? []).map { model in
+            // Ollama keeps its own mark on every cell; the model's brand is
+            // still named in the tooltip. Other runtimes show the brand.
             ProviderSnapshot(id: "\(id):model:\(model.id)", displayName: displayName,
-                             glyph: model.brand?.glyph ?? glyph,
+                             glyph: glyph == .ollamaLocal ? glyph : model.brand?.glyph ?? glyph,
                              fidelity: fidelity, status: status, windows: [],
                              kind: kind, localModel: model,
                              localRuntimeMeasuresSpeed: localRuntime?.measuresSpeed ?? false,
@@ -361,6 +375,11 @@ struct ProviderSnapshot: Identifiable, Equatable {
 
     /// Locally sampled cumulative token usage for a custom endpoint.
     var customUsageHistory: [CustomEndpointUsageDay]? = nil
+
+    /// Observed daily token counts, including cache, from a local usage log.
+    var dailyTokenUsage: [CodexTokenUsage.DailyBucket]? = nil
+
+    var observedHistory: ObservedUsageHistory? = nil
 
     /// The number on the cell: the provider's declared primary window — for
     /// Claude, the current session.
@@ -431,9 +450,69 @@ struct ProviderSnapshot: Identifiable, Equatable {
     /// without a denominator — the same rule the headline ring follows.
     var weeklyFraction: Double? { weeklyWindow?.usedFraction }
 
-    /// What the cell prints under the ring.
-    var headlineText: String {
+    /// What the cell prints under the ring, for the period the card's chart
+    /// was last set to.
+    var headlineText: String { headlineText(period: observedPeriod) }
+
+    /// An Ollama model counts what it spent rather than how fast it went: the
+    /// tokens the relay logged in `period`, prompt and response together — the
+    /// same figure as the chart's "Tokens in period". Nothing logged is 0, not
+    /// a dash: the relay is the record, and it has none.
+    func periodTokens(_ period: UsageHistoryPeriod) -> Int? {
+        if isLocalModelGroup {
+            return localModelCells.reduce(0) { sum, cell in
+                sum + (cell.periodTokenSplit(period).map { $0.input + $0.output } ?? 0)
+            }
+        }
+        guard localModel != nil, providerID == "ollama-local" else { return nil }
+        guard let observedHistory, !observedHistory.unavailable else { return 0 }
+        return observedHistory.slice(period).total
+    }
+
+    /// Prompt and response tokens the relay logged in `period` for one model
+    /// (`prompt_eval_count` and `eval_count`). Nothing logged is 0 each.
+    func periodTokenSplit(_ period: UsageHistoryPeriod) -> (input: Int, output: Int)? {
+        guard localModel != nil, providerID == "ollama-local" else { return nil }
+        guard let observedHistory, !observedHistory.unavailable else { return (0, 0) }
+        let slice = observedHistory.slice(period)
+        return (slice.input ?? 0, slice.output ?? 0)
+    }
+
+    /// Requests the relay logged in `period` for one model. Nothing logged is 0.
+    func periodCalls(_ period: UsageHistoryPeriod) -> Int? {
+        guard localModel != nil, providerID == "ollama-local" else { return nil }
+        guard let observedHistory, !observedHistory.unavailable else { return 0 }
+        return observedHistory.slice(period).requests ?? 0
+    }
+
+    /// The same figure with its unit and period, for the menu and VoiceOver,
+    /// where a bare number under no ring says nothing.
+    func periodTokensText(_ period: UsageHistoryPeriod) -> String? {
+        guard let tokens = periodTokens(period) else { return nil }
+        let count = LimitWindow.compact(tokens)
+        switch period {
+        case .today: return L10n.t("\(count) tokens today")
+        case .week: return L10n.t("\(count) tokens this week")
+        case .month: return L10n.t("\(count) tokens this month")
+        case .year: return L10n.t("\(count) tokens this year")
+        }
+    }
+
+    /// The chart's period picker, shared with the reading under the ring.
+    var observedPeriod: UsageHistoryPeriod {
+        UserDefaults.standard.string(forKey: UsageHistoryPeriod.preferenceKey(id))
+            .flatMap(UsageHistoryPeriod.init(rawValue:)) ?? .month
+    }
+
+    /// Drawn in the quieter ink: a figure that has not been measured yet.
+    func headlineIsPending(period: UsageHistoryPeriod) -> Bool {
+        if let tokens = periodTokens(period) { return tokens == 0 }
+        return showsLocalPerformance && localPerformance == nil
+    }
+
+    func headlineText(period: UsageHistoryPeriod) -> String {
         if kind == .localRuntime {
+            if let tokens = periodTokens(period) { return LimitWindow.compact(tokens) }
             return showsLocalPerformance ? (localPerformance?.headlineText ?? "— tok/s")
                 : (localModel?.memoryText ?? "—")
         }
@@ -447,7 +526,7 @@ struct ProviderSnapshot: Identifiable, Equatable {
 
     /// An empty local inventory still confirms server connectivity; an absent
     /// reading must not be shown as measured zero usage.
-    var hasReading: Bool { localRuntime != nil || localModel != nil || !windows.isEmpty }
+    var hasReading: Bool { localRuntime != nil || isLocalCell || !windows.isEmpty }
 
     /// Group headings occupy space in both the card and its hover region.
     var windowGroupCount: Int { Set(windows.compactMap(\.group)).count }
@@ -465,7 +544,11 @@ struct ProviderSnapshot: Identifiable, Equatable {
     /// Rows the tooltip adds for a logged runtime: context used, tokens and
     /// requests today, reasoning share, draft acceptance. Counted here so the
     /// card's budget and its contents cannot disagree.
-    var localLedgerRowCount: Int { localLedger == nil ? 0 : 5 }
+    var localLedgerRowCount: Int {
+        guard let localLedger else { return 0 }
+        return 5 + (localLedger.last?.timeToFirstToken == nil ? 0 : 1)
+            + (localLedger.last?.generationSeconds == nil ? 0 : 1)
+    }
 
     /// Signing in means something different per provider, so the prompt has to
     /// say which door to knock on.
@@ -481,6 +564,7 @@ struct ProviderSnapshot: Identifiable, Equatable {
         case "cursor":     return L10n.t("Sign in to Cursor in the editor", locale: locale)
         case "codex":      return L10n.t("Sign in to Codex to read your usage", locale: locale)
         case "deepseek":   return L10n.t("Sign in to DeepSeek Platform to read your usage", locale: locale)
+        case "qoder": return L10n.t("Sign in to Qoder to read your credit usage", locale: locale)
         case "qianwenai":  return L10n.t("Sign in to QianwenAI to read your Token Plan usage", locale: locale)
         case _ where CodexProfile.slug(fromProviderID: id) != nil:
             let slug = CodexProfile.slug(fromProviderID: id)!
@@ -493,9 +577,13 @@ struct ProviderSnapshot: Identifiable, Equatable {
         case "copilot":    return L10n.t("Sign in with GitHub CLI to read your Copilot usage", locale: locale)
         case "opencode":   return L10n.t("Connect the Go plan in OpenCode to read your usage", locale: locale)
         case "commandcode": return L10n.t("Sign in with the Command Code app to read your usage", locale: locale)
+        case _ where CommandCodeProfile.slug(fromProviderID: id) != nil:
+            let slug = CommandCodeProfile.slug(fromProviderID: id)!
+            return L10n.t("Sign in to Command Code in ~/.commandcode-\(slug) to read your usage", locale: locale)
         case "kiro":       return L10n.t("Sign in with kiro-cli to read your usage", locale: locale)
         case "amp":        return L10n.t("Run amp login in Terminal to read your usage", locale: locale)
         case "apify":      return L10n.t("Run apify login in Terminal, or paste an Apify API token in Settings", locale: locale)
+        case "nvidia-nim": return L10n.t("Export NVIDIA_API_KEY before launching Codenotch to validate NVIDIA NIM, or run NVIDIA through OpenCode so local usage can be counted", locale: locale)
         case "kilo":       return L10n.t("Sign in with the Kilo CLI to read your usage", locale: locale)
         // Two Ollamas, and they are stuck for different reasons: the hosted
         // one wants a key, the local one wants the daemon running.
@@ -509,7 +597,7 @@ struct ProviderSnapshot: Identifiable, Equatable {
     /// What the tooltip says instead of limit rows when there is nothing to show.
     var statusMessage: String? {
         if kind == .localRuntime {
-            if localModel != nil { return nil }
+            if isLocalCell { return nil }
             if let localRuntime {
                 return localRuntime.models.isEmpty ? localRuntime.summary : nil
             }

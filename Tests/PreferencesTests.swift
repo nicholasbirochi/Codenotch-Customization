@@ -67,7 +67,7 @@ final class PreferencesMigrationTests: XCTestCase {
         XCTAssertTrue(preferences.isFirstLaunch)
         XCTAssertEqual(preferences.notchVisibility, .onHover)
         XCTAssertTrue(preferences.foldsForFullScreen)
-        XCTAssertEqual(preferences.appPresence, .dock)
+        XCTAssertEqual(preferences.appPresence, .menuBar)
         XCTAssertEqual(preferences.notchEdge, .right)
         XCTAssertEqual(preferences.notchSize, .medium)
         XCTAssertEqual(preferences.weeklyRing, .off)
